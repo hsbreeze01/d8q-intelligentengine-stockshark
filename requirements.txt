@@ -1,0 +1,15 @@
+flask
+flask-cors
+pymysql
+pymongo
+akshare
+pandas
+numpy
+python-dotenv
+jieba
+hanlp
+spacy
+requests
+scikit-learn
+matplotlib
+seaborn
