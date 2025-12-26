@@ -20,7 +20,7 @@ if __name__ == '__main__':
     app = create_app(app_config)
     
     host = os.environ.get('FLASK_HOST', '0.0.0.0')
-    port = int(os.environ.get('FLASK_PORT', 5000))
+    port = int(os.environ.get('FLASK_PORT', 5001))
     
     print(f"Starting StockShark API Server in {env} mode...")
     print(f"Server running at http://{host}:{port}")

@@ -44,26 +44,53 @@ class SearchEngine:
                 if stock_info:
                     result['results'].append(stock_info)
             
-            # 获取所有股票列表（这里使用行业和概念数据作为示例）
-            # 实际应用中应该维护一个股票索引
+            # 获取所有股票列表
+            # 使用行业和概念数据进行搜索
             industries = self.ak_data.get_all_industries()
             all_stocks = []
             
-            for industry in industries[:10]:  # 限制行业数量以提高性能
+            # 处理所有行业（移除限制）
+            for industry in industries:
                 stocks = self.ak_data.get_industry_stocks(industry)
                 if stocks:
                     all_stocks.extend(stocks)
             
             # 按名称模糊搜索
             for stock in all_stocks:
-                if keyword.lower() in stock.get('名称', '').lower():
+                stock_name = stock.get('名称', '')
+                if keyword.lower() in stock_name.lower():
                     if len(result['results']) < limit:
                         result['results'].append({
                             'code': stock.get('代码', ''),
-                            'name': stock.get('名称', ''),
+                            'name': stock_name,
                             'price': stock.get('最新价', 0),
                             'change_pct': stock.get('涨跌幅', 0)
                         })
+            
+            # 如果通过行业搜索结果不足，尝试通过概念搜索
+            if len(result['results']) < limit:
+                concepts = self.ak_data.get_all_concepts()
+                for concept in concepts:
+                    try:
+                        concept_stocks = self.ak_data.get_concept_stocks(concept)
+                        if concept_stocks:
+                            for stock in concept_stocks:
+                                stock_name = stock.get('名称', '')
+                                if keyword.lower() in stock_name.lower():
+                                    # 检查是否已存在
+                                    existing = any(
+                                        r['code'] == stock.get('代码', '') 
+                                        for r in result['results']
+                                    )
+                                    if not existing and len(result['results']) < limit:
+                                        result['results'].append({
+                                            'code': stock.get('代码', ''),
+                                            'name': stock_name,
+                                            'price': stock.get('最新价', 0),
+                                            'change_pct': stock.get('涨跌幅', 0)
+                                        })
+                    except Exception as e:
+                        continue
             
             result['total'] = len(result['results'])
             
@@ -319,8 +346,8 @@ class SearchEngine:
         :return: 行业名称列表
         """
         try:
-            industry_df = self.ak_data.get_all_industries()
-            return industry_df['板块名称'].tolist()
+            industries = self.ak_data.get_all_industries()
+            return industries
         except Exception as e:
             print(f"获取行业列表失败: {e}")
             return []
@@ -331,8 +358,8 @@ class SearchEngine:
         :return: 概念名称列表
         """
         try:
-            concept_df = self.ak_data.get_all_concepts()
-            return concept_df['板块名称'].tolist()
+            concepts = self.ak_data.get_all_concepts()
+            return concepts
         except Exception as e:
             print(f"获取概念列表失败: {e}")
             return []

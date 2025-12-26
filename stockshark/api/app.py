@@ -1,4 +1,5 @@
-from flask import Flask, request, jsonify
+import os
+from flask import Flask, request, jsonify, render_template
 from flask_cors import CORS
 from stockshark.config import Config
 from stockshark.data.database import DatabaseManager
@@ -17,7 +18,10 @@ def create_app(config=None):
     Returns:
         Flask 应用实例
     """
-    app = Flask(__name__)
+    template_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web', 'templates')
+    static_dir = os.path.join(os.path.dirname(os.path.dirname(__file__)), 'web', 'static')
+    
+    app = Flask(__name__, template_folder=template_dir, static_folder=static_dir)
     
     if config:
         app.config.from_object(config)
@@ -42,6 +46,10 @@ def create_app(config=None):
     
     @app.route('/', methods=['GET'])
     def index():
+        return render_template('index.html')
+    
+    @app.route('/api', methods=['GET'])
+    def api_info():
         return jsonify({
             'name': 'Stock Analysis System API',
             'version': '1.0.0',

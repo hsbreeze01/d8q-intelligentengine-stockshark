@@ -11,6 +11,7 @@ class DatabaseManager:
     
     _mysql_connection = None
     _mongodb_connection = None
+    _mongodb_available = False
     
     @classmethod
     def get_mysql_connection(cls):
@@ -35,18 +36,26 @@ class DatabaseManager:
     @classmethod
     def get_mongodb_connection(cls):
         """获取 MongoDB 连接"""
-        if cls._mongodb_connection is None:
+        if cls._mongodb_available and cls._mongodb_connection is None:
             try:
                 client = MongoClient(
                     host=Config.MONGODB_HOST,
-                    port=Config.MONGODB_PORT
+                    port=Config.MONGODB_PORT,
+                    serverSelectionTimeoutMS=3000
                 )
+                client.server_info()
                 cls._mongodb_connection = client[Config.MONGODB_DATABASE]
                 logger.info("MongoDB connection established successfully")
             except Exception as e:
-                logger.error(f"MongoDB connection error: {e}")
+                logger.warning(f"MongoDB connection error: {e}. MongoDB features will be disabled.")
+                cls._mongodb_available = False
                 cls._mongodb_connection = None
         return cls._mongodb_connection
+    
+    @classmethod
+    def is_mongodb_available(cls):
+        """检查 MongoDB 是否可用"""
+        return cls._mongodb_available
     
     @classmethod
     def init_database(cls):
@@ -149,16 +158,24 @@ class DatabaseManager:
     @classmethod
     def _init_mongodb(cls):
         """初始化 MongoDB 集合"""
-        mongodb_conn = cls.get_mongodb_connection()
-        if mongodb_conn is not None:
-            try:
-                collections = ['news', 'analysis_results', 'scenario_analysis']
-                for coll_name in collections:
-                    if coll_name not in mongodb_conn.list_collection_names():
-                        mongodb_conn.create_collection(coll_name)
-                        logger.info(f"MongoDB collection {coll_name} created successfully")
-            except Exception as e:
-                logger.error(f"MongoDB collection creation error: {e}")
+        try:
+            client = MongoClient(
+                host=Config.MONGODB_HOST,
+                port=Config.MONGODB_PORT,
+                serverSelectionTimeoutMS=3000
+            )
+            client.server_info()
+            cls._mongodb_available = True
+            mongodb_conn = client[Config.MONGODB_DATABASE]
+            
+            collections = ['news', 'analysis_results', 'scenario_analysis']
+            for coll_name in collections:
+                if coll_name not in mongodb_conn.list_collection_names():
+                    mongodb_conn.create_collection(coll_name)
+                    logger.info(f"MongoDB collection {coll_name} created successfully")
+        except Exception as e:
+            logger.warning(f"MongoDB initialization error: {e}. MongoDB features will be disabled.")
+            cls._mongodb_available = False
     
     @classmethod
     def close_connections(cls):

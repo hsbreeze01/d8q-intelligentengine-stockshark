@@ -1,0 +1,56 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>StockShark - 股票分析系统</title>
+    <link rel="stylesheet" href="/static/css/style.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>🦈 StockShark</h1>
+            <p class="subtitle">智能股票分析系统</p>
+        </header>
+
+        <nav class="tabs">
+            <button class="tab-btn active" data-tab="stock-trend">股票趋势分析</button>
+            <button class="tab-btn" data-tab="scenario-analysis">场景分析</button>
+        </nav>
+
+        <main>
+            <section id="stock-trend" class="tab-content active">
+                <div class="search-box">
+                    <input type="text" id="stock-code-input" placeholder="请输入股票代码（如：000001、600000）" />
+                    <button id="search-stock-btn">查询</button>
+                </div>
+
+                <div id="stock-info" class="stock-info">
+                </div>
+
+                <div id="stock-chart-container" class="chart-container">
+                    <h3>股价走势图</h3>
+                    <canvas id="stock-chart"></canvas>
+                </div>
+            </section>
+
+            <section id="scenario-analysis" class="tab-content">
+                <div class="search-box">
+                    <input type="text" id="scenario-input" placeholder="请输入关键字或场景描述（如：英伟达GPU、芯片、人工智能）" />
+                    <button id="search-scenario-btn">搜索</button>
+                </div>
+
+                <div id="scenario-results" class="scenario-results">
+                </div>
+            </section>
+        </main>
+
+        <footer>
+            <p>&copy; 2024 StockShark. All rights reserved.</p>
+        </footer>
+    </div>
+
+    <script src="/static/js/app.js"></script>
+</body>
+</html>

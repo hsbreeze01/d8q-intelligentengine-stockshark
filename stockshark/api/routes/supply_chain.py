@@ -134,6 +134,43 @@ def search_supplier():
         }), 500
 
 
+@supply_chain_bp.route('/analyze', methods=['GET'])
+def analyze():
+    """
+    根据关键词分析场景，识别相关供应链企业
+    参数:
+    - keyword: 搜索关键词
+    """
+    try:
+        keyword = request.args.get('keyword')
+        
+        if not keyword:
+            return jsonify({
+                'success': False,
+                'error': '缺少必要参数: keyword'
+            }), 400
+        
+        # 分析场景
+        result = supply_chain_analyzer.analyze_scenario(keyword)
+        
+        if 'error' in result:
+            return jsonify({
+                'success': False,
+                'error': result['error']
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': result.get('related_companies', [])
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @supply_chain_bp.route('/health', methods=['GET'])
 def health_check():
     """

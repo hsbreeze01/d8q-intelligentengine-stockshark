@@ -234,6 +234,59 @@ def get_stock_basic():
         }), 500
 
 
+@analysis_bp.route('/stock/history', methods=['GET'])
+def get_stock_history():
+    """
+    获取股票历史行情数据
+    参数:
+    - symbol: 股票代码
+    - start_date: 开始日期，格式 'YYYY-MM-DD'
+    - end_date: 结束日期，格式 'YYYY-MM-DD'
+    """
+    try:
+        symbol = request.args.get('symbol')
+        start_date = request.args.get('start_date')
+        end_date = request.args.get('end_date')
+        
+        if not symbol:
+            return jsonify({
+                'success': False,
+                'error': '缺少必要参数: symbol'
+            }), 400
+        
+        if not start_date:
+            return jsonify({
+                'success': False,
+                'error': '缺少必要参数: start_date'
+            }), 400
+        
+        if not end_date:
+            return jsonify({
+                'success': False,
+                'error': '缺少必要参数: end_date'
+            }), 400
+        
+        # 获取历史数据
+        history_data = stock_analyzer.ak_data.get_stock_history_data(symbol, start_date, end_date)
+        
+        if history_data is None:
+            return jsonify({
+                'success': False,
+                'error': '获取股票历史数据失败'
+            }), 500
+        
+        return jsonify({
+            'success': True,
+            'data': history_data.to_dict('records') if history_data is not None else []
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
 @analysis_bp.route('/health', methods=['GET'])
 def health_check():
     """
