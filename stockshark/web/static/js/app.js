@@ -69,6 +69,7 @@ async function handleStockSearch() {
         if (result.success && result.data) {
             displayStockInfo(result.data);
             await loadStockHistory(stockCode);
+            await loadStockSectors(stockCode);
         } else {
             showError('stock-trend', result.error || '获取股票信息失败');
         }
@@ -101,6 +102,19 @@ async function loadStockHistory(stockCode) {
     } catch (error) {
         console.error('Error fetching stock history:', error);
         document.getElementById('stock-chart-container').style.display = 'none';
+    }
+}
+
+async function loadStockSectors(stockCode) {
+    try {
+        const response = await fetch(`${API_BASE_URL}/analysis/stock/sectors?symbol=${stockCode}`);
+        const result = await response.json();
+
+        if (result.success && result.data) {
+            displayStockSectors(result.data);
+        }
+    } catch (error) {
+        console.error('Error fetching stock sectors:', error);
     }
 }
 
@@ -163,6 +177,66 @@ function displayStockInfo(data) {
     `;
     
     infoContainer.style.display = 'block';
+}
+
+function displayStockSectors(data) {
+    const sectorsContainer = document.getElementById('stock-sectors');
+    
+    if (!sectorsContainer) {
+        const infoContainer = document.getElementById('stock-info');
+        const sectorsHtml = `
+            <div id="stock-sectors" class="stock-sectors">
+                <h3>所属板块</h3>
+                <div class="sectors-content">
+                    <div class="sector-section">
+                        <h4>行业</h4>
+                        <div class="sector-item">
+                            <span class="sector-name">${data.industry.name || '未知'}</span>
+                            <span class="sector-count">${data.industry.stock_count || 0}只股票</span>
+                        </div>
+                    </div>
+                    <div class="sector-section">
+                        <h4>概念</h4>
+                        <div class="concepts-list">
+                            ${data.concepts.length > 0 ? data.concepts.map(concept => `
+                                <div class="concept-item">
+                                    <span class="concept-name">${concept.name}</span>
+                                    <span class="concept-count">${concept.stock_count}只</span>
+                                </div>
+                            `).join('') : '<div class="no-concepts">暂无概念信息</div>'}
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+        infoContainer.insertAdjacentHTML('afterend', sectorsHtml);
+        document.getElementById('stock-sectors').style.display = 'block';
+    } else {
+        sectorsContainer.innerHTML = `
+            <h3>所属板块</h3>
+            <div class="sectors-content">
+                <div class="sector-section">
+                    <h4>行业</h4>
+                    <div class="sector-item">
+                        <span class="sector-name">${data.industry.name || '未知'}</span>
+                        <span class="sector-count">${data.industry.stock_count || 0}只股票</span>
+                    </div>
+                </div>
+                <div class="sector-section">
+                    <h4>概念</h4>
+                    <div class="concepts-list">
+                        ${data.concepts.length > 0 ? data.concepts.map(concept => `
+                            <div class="concept-item">
+                                <span class="concept-name">${concept.name}</span>
+                                <span class="concept-count">${concept.stock_count}只</span>
+                            </div>
+                        `).join('') : '<div class="no-concepts">暂无概念信息</div>'}
+                    </div>
+                </div>
+            </div>
+        `;
+        sectorsContainer.style.display = 'block';
+    }
 }
 
 function displayStockChart(data) {

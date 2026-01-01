@@ -30,18 +30,35 @@ class AkShareData:
                 return None
             
             # 获取更详细的股票信息
+            industry = ''
+            concept = ''
+            region = ''
+            full_name = ''
+            
             try:
-                detail_info = ak.stock_info_em(symbol=symbol)
-            except:
-                detail_info = {}
+                detail_info = ak.stock_individual_info_em(symbol=symbol)
+                if not detail_info.empty:
+                    detail_dict = dict(zip(detail_info['item'], detail_info['value']))
+                    industry = detail_dict.get('行业', '')
+                    region = detail_dict.get('地区', '')
+                    full_name = detail_dict.get('股票简称', '')
+            except Exception as e:
+                print(f"获取详细信息失败: {e}")
+            
+            # 获取概念信息
+            try:
+                concepts = self.get_stock_concepts(symbol, limit=10)
+                concept = '、'.join(concepts) if concepts else ''
+            except Exception as e:
+                print(f"获取概念信息失败: {e}")
             
             result = {
                 'code': symbol,
                 'name': stock['name'].values[0],
-                'full_name': detail_info.get('公司名称', ''),
-                'industry': detail_info.get('行业', ''),
-                'concept': detail_info.get('概念', ''),
-                'region': detail_info.get('地区', ''),
+                'full_name': full_name,
+                'industry': industry,
+                'concept': concept,
+                'region': region,
                 'market': '深市' if symbol.startswith('00') or symbol.startswith('30') else '沪市'
             }
             
@@ -204,6 +221,42 @@ class AkShareData:
             return stocks.to_dict('records')
         except Exception as e:
             print(f"获取概念股票数据失败: {e}")
+            return []
+    
+    def get_stock_concepts(self, symbol: str, limit: int = 5) -> list:
+        """
+        获取股票所属的概念列表
+        :param symbol: 股票代码
+        :param limit: 返回概念数量限制
+        :return: 概念名称列表
+        """
+        try:
+            concepts = []
+            
+            # 获取所有概念板块
+            concept_df = ak.stock_board_concept_name_em()
+            
+            # 遍历所有概念板块
+            for idx, row in concept_df.iterrows():
+                concept_name = row['板块名称']
+                concept_code = row['板块代码']
+                
+                try:
+                    # 获取该概念的成分股
+                    cons_df = ak.stock_board_concept_cons_em(symbol=concept_code)
+                    
+                    # 检查是否包含目标股票
+                    if not cons_df.empty and symbol in cons_df['代码'].values:
+                        concepts.append(concept_name)
+                        
+                        if len(concepts) >= limit:
+                            break
+                except Exception as e:
+                    continue
+            
+            return concepts
+        except Exception as e:
+            print(f"获取股票概念失败: {e}")
             return []
     
     def get_all_stocks(self) -> list:

@@ -6,6 +6,7 @@ from flask import Blueprint, request, jsonify
 from stockshark.data.akshare_data import AkShareData
 from stockshark.data.data_processor import DataProcessor
 from stockshark.analysis.stock_analyzer import StockAnalyzer
+from stockshark.services.stock_service import stock_service
 
 analysis_bp = Blueprint('analysis', __name__)
 
@@ -115,9 +116,17 @@ def get_stock_valuation():
         # 获取估值数据
         valuation_data = stock_analyzer.ak_data.get_stock_valuation_data(symbol)
         
+        # 处理不同类型的数据返回
+        if valuation_data is None:
+            data = []
+        elif hasattr(valuation_data, 'to_dict'):
+            data = valuation_data.to_dict('records')
+        else:
+            data = valuation_data
+        
         return jsonify({
             'success': True,
-            'data': valuation_data.to_dict('records') if valuation_data is not None else []
+            'data': data
         })
         
     except Exception as e:
@@ -148,9 +157,17 @@ def get_stock_financial():
         # 获取财务数据
         financial_data = stock_analyzer.ak_data.get_stock_financial_data(symbol, report_type)
         
+        # 处理不同类型的数据返回
+        if financial_data is None:
+            data = []
+        elif hasattr(financial_data, 'to_dict'):
+            data = financial_data.to_dict('records')
+        else:
+            data = financial_data
+        
         return jsonify({
             'success': True,
-            'data': financial_data.to_dict('records') if financial_data is not None else []
+            'data': data
         })
         
     except Exception as e:
@@ -200,7 +217,7 @@ def get_stock_quote():
 @analysis_bp.route('/stock/basic', methods=['GET'])
 def get_stock_basic():
     """
-    获取股票基本信息
+    获取股票基本信息（优先从数据库查询）
     参数:
     - symbol: 股票代码
     """
@@ -213,8 +230,8 @@ def get_stock_basic():
                 'error': '缺少必要参数: symbol'
             }), 400
         
-        # 获取基本信息
-        basic_info = stock_analyzer.ak_data.get_stock_basic_info(symbol)
+        # 获取基本信息（优先从数据库）
+        basic_info = stock_service.get_stock_basic_info(symbol)
         
         if basic_info is None:
             return jsonify({
@@ -278,6 +295,37 @@ def get_stock_history():
         return jsonify({
             'success': True,
             'data': history_data.to_dict('records') if history_data is not None else []
+        })
+        
+    except Exception as e:
+        return jsonify({
+            'success': False,
+            'error': str(e)
+        }), 500
+
+
+@analysis_bp.route('/stock/sectors', methods=['GET'])
+def get_stock_sectors():
+    """
+    获取股票所属的行业和概念信息（优先从数据库查询）
+    参数:
+    - symbol: 股票代码
+    """
+    try:
+        symbol = request.args.get('symbol')
+        
+        if not symbol:
+            return jsonify({
+                'success': False,
+                'error': '缺少必要参数: symbol'
+            }), 400
+        
+        # 获取行业和概念信息（优先从数据库）
+        result = stock_service.get_stock_sectors(symbol)
+        
+        return jsonify({
+            'success': True,
+            'data': result
         })
         
     except Exception as e:
