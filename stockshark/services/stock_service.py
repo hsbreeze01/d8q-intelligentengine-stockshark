@@ -239,10 +239,12 @@ class StockService:
         
         industry_name = ''
         concept_str = ''
+        stock_name = ''
         
         if db_info:
             industry_name = db_info.get('industry', '')
             concept_str = db_info.get('concept', '')
+            stock_name = db_info.get('name', '')
             logger.info(f"从数据库获取股票 {symbol} 行业和概念信息")
         else:
             # 2. 数据库中没有，从akshare获取
@@ -252,6 +254,7 @@ class StockService:
             if api_info:
                 industry_name = api_info.get('industry', '')
                 concept_str = api_info.get('concept', '')
+                stock_name = api_info.get('name', '')
                 
                 # 3. 保存到数据库
                 try:
@@ -289,7 +292,7 @@ class StockService:
         
         return {
             'symbol': symbol,
-            'name': db_info['name'] if db_info else '',
+            'name': stock_name,
             'industry': {
                 'name': industry_name,
                 'stock_count': len(industry_stocks)
