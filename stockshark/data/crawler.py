@@ -53,14 +53,7 @@ class StockDataCrawler:
         try:
             self.logger.info(f"获取股票 {symbol} 的基本信息...")
             
-            stock_list = ak.stock_info_a_code_name()
-            df = pd.DataFrame(stock_list, columns=['code', 'name'])
-            stock = df[df['code'] == symbol]
-            
-            if stock.empty:
-                self.logger.warning(f"股票 {symbol} 不存在")
-                return None
-            
+            name = ''
             industry = ''
             concept = ''
             region = ''
@@ -71,9 +64,10 @@ class StockDataCrawler:
                 detail_info = ak.stock_individual_info_em(symbol=symbol)
                 if not detail_info.empty:
                     detail_dict = dict(zip(detail_info['item'], detail_info['value']))
+                    name = detail_dict.get('股票简称', '')
+                    full_name = detail_dict.get('股票简称', '')
                     industry = detail_dict.get('行业', '')
                     region = detail_dict.get('地区', '')
-                    full_name = detail_dict.get('股票简称', '')
                     list_date_str = detail_dict.get('上市日期', '')
                     if list_date_str:
                         try:
@@ -82,6 +76,10 @@ class StockDataCrawler:
                             pass
             except Exception as e:
                 self.logger.warning(f"获取股票 {symbol} 详细信息失败: {e}")
+            
+            if not name:
+                self.logger.warning(f"股票 {symbol} 不存在或无法获取信息")
+                return None
             
             try:
                 concepts = self._fetch_stock_concepts(symbol, limit=10)
@@ -93,7 +91,7 @@ class StockDataCrawler:
             
             result = {
                 'symbol': symbol,
-                'name': stock['name'].values[0],
+                'name': name,
                 'full_name': full_name,
                 'industry': industry,
                 'concept': concept,
@@ -347,3 +345,117 @@ class StockDataCrawler:
         
         self.logger.info(f"今日数据爬取完成: 成功 {success_count} 条记录, 失败 {fail_count} 只股票")
         return success_count, fail_count
+    
+    def crawl_incremental_basic_info(self, update_existing=False, workers=5):
+        """
+        增量爬取股票基本信息（每日更新）
+        
+        Args:
+            update_existing: 是否更新已存在的股票信息（行业、概念等可能变化）
+            workers: 并行worker数量
+        
+        Returns:
+            dict: 包含新增、更新、失败数量的统计信息
+        """
+        self.logger.info("开始增量爬取股票基本信息...")
+        
+        existing_symbols = set(StockBasicInfo.get_all_symbols())
+        self.logger.info(f"数据库中已有 {len(existing_symbols)} 只股票")
+        
+        all_stocks = self.fetch_all_stock_list()
+        all_symbols = {stock['code'] for stock in all_stocks}
+        
+        new_symbols = all_symbols - existing_symbols
+        
+        result = {
+            'new_count': 0,
+            'updated_count': 0,
+            'failed_count': 0,
+            'skipped_count': 0
+        }
+        
+        if new_symbols:
+            self.logger.info(f"发现 {len(new_symbols)} 只新增股票，开始爬取...")
+            
+            from concurrent.futures import ThreadPoolExecutor, as_completed
+            
+            def crawl_new_stock(symbol):
+                try:
+                    basic_info = self.fetch_stock_basic_info(symbol)
+                    if basic_info:
+                        stock = StockBasicInfo(
+                            symbol=basic_info['symbol'],
+                            name=basic_info['name'],
+                            full_name=basic_info.get('full_name', ''),
+                            industry=basic_info.get('industry', ''),
+                            concept=basic_info.get('concept', ''),
+                            region=basic_info.get('region', ''),
+                            market=basic_info.get('market', ''),
+                            list_date=basic_info.get('list_date')
+                        )
+                        if stock.save():
+                            return {'symbol': symbol, 'success': True, 'type': 'new', 
+                                    'name': basic_info['name'], 'industry': basic_info.get('industry', 'N/A')}
+                        else:
+                            return {'symbol': symbol, 'success': False, 'error': '保存失败'}
+                    else:
+                        return {'symbol': symbol, 'success': False, 'error': '获取信息失败'}
+                except Exception as e:
+                    return {'symbol': symbol, 'success': False, 'error': str(e)}
+            
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                future_to_symbol = {executor.submit(crawl_new_stock, symbol): symbol for symbol in new_symbols}
+                
+                for future in as_completed(future_to_symbol):
+                    result_data = future.result()
+                    if result_data['success']:
+                        result['new_count'] += 1
+                        self.logger.info(f"新增: {result_data['symbol']} - {result_data['name']} (行业: {result_data['industry']})")
+                    else:
+                        result['failed_count'] += 1
+                        self.logger.warning(f"失败: {result_data['symbol']} - {result_data['error']}")
+        else:
+            self.logger.info("没有发现新增股票")
+            result['skipped_count'] = len(existing_symbols)
+        
+        if update_existing:
+            self.logger.info(f"开始更新已有 {len(existing_symbols)} 只股票的基本信息...")
+            
+            def update_existing_stock(symbol):
+                try:
+                    basic_info = self.fetch_stock_basic_info(symbol)
+                    if basic_info:
+                        stock = StockBasicInfo(
+                            symbol=basic_info['symbol'],
+                            name=basic_info['name'],
+                            full_name=basic_info.get('full_name', ''),
+                            industry=basic_info.get('industry', ''),
+                            concept=basic_info.get('concept', ''),
+                            region=basic_info.get('region', ''),
+                            market=basic_info.get('market', ''),
+                            list_date=basic_info.get('list_date')
+                        )
+                        if stock.save():
+                            return {'symbol': symbol, 'success': True, 'type': 'updated',
+                                    'name': basic_info['name'], 'industry': basic_info.get('industry', 'N/A')}
+                        else:
+                            return {'symbol': symbol, 'success': False, 'error': '保存失败'}
+                    else:
+                        return {'symbol': symbol, 'success': False, 'error': '获取信息失败'}
+                except Exception as e:
+                    return {'symbol': symbol, 'success': False, 'error': str(e)}
+            
+            with ThreadPoolExecutor(max_workers=workers) as executor:
+                future_to_symbol = {executor.submit(update_existing_stock, symbol): symbol for symbol in existing_symbols}
+                
+                for future in as_completed(future_to_symbol):
+                    result_data = future.result()
+                    if result_data['success']:
+                        result['updated_count'] += 1
+                        self.logger.info(f"更新: {result_data['symbol']} - {result_data['name']} (行业: {result_data['industry']})")
+                    else:
+                        result['failed_count'] += 1
+                        self.logger.warning(f"失败: {result_data['symbol']} - {result_data['error']}")
+        
+        self.logger.info(f"增量更新完成: 新增 {result['new_count']} 只, 更新 {result['updated_count']} 只, 失败 {result['failed_count']} 只, 跳过 {result['skipped_count']} 只")
+        return result

@@ -140,6 +140,27 @@ def crawl_single_stock(symbol):
     print(f"获取到 {len(trades)} 条交易记录")
 
 
+def crawl_incremental_basic_info(update_existing=False, workers=5):
+    """增量爬取股票基本信息（每日更新）"""
+    crawler = StockDataCrawler()
+    
+    print("开始增量爬取股票基本信息...")
+    if update_existing:
+        print(f"模式: 更新模式（将更新所有已有股票的信息）")
+    else:
+        print(f"模式: 新增模式（仅爬取新上市的股票）")
+    print(f"并行worker数量: {workers}")
+    
+    result = crawler.crawl_incremental_basic_info(update_existing=update_existing, workers=workers)
+    
+    print(f"\n增量更新完成统计:")
+    print(f"  新增股票: {result['new_count']} 只")
+    print(f"  更新股票: {result['updated_count']} 只")
+    print(f"  失败股票: {result['failed_count']} 只")
+    print(f"  跳过股票: {result['skipped_count']} 只")
+    print(f"  总计处理: {result['new_count'] + result['updated_count'] + result['failed_count'] + result['skipped_count']} 只")
+
+
 def main():
     parser = argparse.ArgumentParser(description='股票数据爬取工具')
     
@@ -164,6 +185,12 @@ def main():
     single_parser = subparsers.add_parser('single', help='爬取单只股票数据')
     single_parser.add_argument('symbol', type=str, help='股票代码')
     
+    incremental_parser = subparsers.add_parser('incremental', help='增量爬取股票基本信息（每日更新）')
+    incremental_parser.add_argument('--update-existing', action='store_true', 
+                                     help='是否更新已存在的股票信息（行业、概念等可能变化）')
+    incremental_parser.add_argument('--workers', type=int, default=5, 
+                                    help='并行worker数量（默认5）')
+    
     args = parser.parse_args()
     
     if not args.command:
@@ -180,6 +207,8 @@ def main():
         crawl_today()
     elif args.command == 'single':
         crawl_single_stock(args.symbol)
+    elif args.command == 'incremental':
+        crawl_incremental_basic_info(update_existing=args.update_existing, workers=args.workers)
 
 
 if __name__ == '__main__':
