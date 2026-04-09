@@ -6,6 +6,7 @@ from stockshark.data.database import DatabaseManager
 from stockshark.api.routes.analysis import analysis_bp
 from stockshark.api.routes.search import search_bp
 from stockshark.api.routes.supply_chain import supply_chain_bp
+from stockshark.api.routes.announcement import announcement_bp
 
 
 def create_app(config=None):
@@ -35,6 +36,7 @@ def create_app(config=None):
     app.register_blueprint(analysis_bp, url_prefix=f'{Config.API_PREFIX}/analysis')
     app.register_blueprint(search_bp, url_prefix=f'{Config.API_PREFIX}/search')
     app.register_blueprint(supply_chain_bp, url_prefix=f'{Config.API_PREFIX}/supply-chain')
+    app.register_blueprint(announcement_bp, url_prefix=f'{Config.API_PREFIX}/announcement')
     
     @app.route('/health', methods=['GET'])
     def health_check():
