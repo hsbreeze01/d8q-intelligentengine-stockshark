@@ -59,9 +59,15 @@ class DatabaseManager:
     
     @classmethod
     def init_database(cls):
-        """初始化数据库表结构"""
-        cls._init_mysql()
-        cls._init_mongodb()
+        """初始化数据库表结构（数据库不可用时优雅降级）"""
+        try:
+            cls._init_mysql()
+        except Exception as e:
+            print(f"[WARN] MySQL初始化跳过: {e}")
+        try:
+            cls._init_mongodb()
+        except Exception as e:
+            print(f"[WARN] MongoDB初始化跳过: {e}")
     
     @classmethod
     def _init_mysql(cls):
