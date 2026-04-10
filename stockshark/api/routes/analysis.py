@@ -344,3 +344,28 @@ def health_check():
         'success': True,
         'message': '股票分析API服务正常'
     })
+
+
+# === LLM 综合分析 ===
+@analysis_bp.route('/stock/comprehensive', methods=['POST'])
+def comprehensive_analysis():
+    """LLM 驱动的股票综合分析
+
+    POST /api/analysis/stock/comprehensive
+    Body: {"stock_code": "603009", "scope": "all"}
+    scope: short/mid/long/all
+    """
+    from stockshark.analysis.llm_analyzer import analyze_stock_comprehensive
+
+    data = request.get_json() or {}
+    stock_code = data.get('stock_code', '')
+    if not stock_code:
+        return jsonify({"error": "stock_code 必填"}), 400
+
+    scope = data.get('scope', 'all')
+    result = analyze_stock_comprehensive(stock_code, scope=scope)
+
+    if result.get('error'):
+        return jsonify(result), 500
+
+    return jsonify(result), 200
