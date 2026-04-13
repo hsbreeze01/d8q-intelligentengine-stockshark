@@ -2,6 +2,8 @@
 
 整合 AkShare(行情/财务) + 巨潮(公告) + 洞见研报(研报/调研) 数据，
 通过 DeepSeek 进行短期/中期/长期价值与风险分析。
+
+v1.1 - 增加评估结论缓存与智能重新评估（docs/evaluation_cache_design.md）
 """
 
 import json
@@ -15,6 +17,11 @@ import requests
 from stockshark.data.akshare_data import AkShareData
 from stockshark.data.announcement import get_announcements
 from stockshark.data.research_report import get_reports
+from stockshark.data.hibor_report import get_hibor_reports
+from stockshark.analysis.evaluation_cache import (
+    get_cached_evaluation, save_evaluation, build_fingerprint,
+    check_triggers, ensure_index,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -23,6 +30,12 @@ _BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
 _MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 
 _ak = AkShareData()
+
+# 启动时确保索引
+try:
+    ensure_index()
+except Exception:
+    pass
 
 
 def _llm_call(prompt: str, max_tokens: int = 4000) -> str:
@@ -88,6 +101,17 @@ def _gather_data(stock_code: str) -> Dict[str, Any]:
     except Exception as e:
         data["reports"] = []
 
+    # 4. 慧博投研: 公司调研研报
+    try:
+        hb = get_hibor_reports(keyword, days=30, max_pages=2)
+        data["hibor_reports"] = [
+            {"title": r["title"], "org": r["org"], "date": r["date"],
+             "summary": r.get("summary", "")}
+            for r in hb.get("reports", [])
+        ]
+    except Exception as e:
+        data["hibor_reports"] = []
+
     return data
 
 
@@ -100,6 +124,7 @@ def _build_prompt(data: Dict, scope: str) -> str:
     financial = json.dumps(data.get("financial", {}), ensure_ascii=False, default=str)[:1000]
     announcements = json.dumps(data.get("announcements", [])[:10], ensure_ascii=False)[:800]
     reports = json.dumps(data.get("reports", [])[:8], ensure_ascii=False)[:1200]
+    hibor_reports = json.dumps(data.get("hibor_reports", [])[:5], ensure_ascii=False)[:800]
 
     scope_instruction = {
         "short": "重点分析短期(1-4周)：技术面信号、近期公告事件催化、资金面、短期风险。",
@@ -129,8 +154,11 @@ def _build_prompt(data: Dict, scope: str) -> str:
 ### 近期公告(近30天)
 {announcements}
 
-### 券商研报/机构调研
+### 券商研报/机构调研(洞见研报)
 {reports}
+
+### 券商研报/机构调研(慧博投研)
+{hibor_reports}
 
 ## 输出要求
 
@@ -159,34 +187,17 @@ def _build_prompt(data: Dict, scope: str) -> str:
 }}"""
 
 
-def analyze_stock_comprehensive(
-    stock_code: str,
-    scope: str = "all",
-) -> Dict[str, Any]:
-    """综合分析股票
-
-    Args:
-        stock_code: 股票代码
-        scope: 分析范围 short/mid/long/all
-
-    Returns:
-        LLM 分析结果
-    """
-    if not _API_KEY:
-        return {"error": "DEEPSEEK_API_KEY 未配置"}
-
+def _do_full_evaluation(stock_code: str, scope: str,
+                        trigger_reason: str) -> Dict[str, Any]:
+    """执行全量评估：采集数据 → LLM分析 → 存储结论"""
     # 1. 采集数据
-    logger.info("开始采集 %s 数据", stock_code)
+    logger.info("全量评估 %s (scope=%s, reason=%s)", stock_code, scope, trigger_reason)
     data = _gather_data(stock_code)
 
-    # 2. 构建 Prompt
+    # 2. 构建 Prompt & LLM 分析
     prompt = _build_prompt(data, scope)
-
-    # 3. LLM 分析
-    logger.info("调用 LLM 分析 %s (scope=%s)", stock_code, scope)
     try:
         raw = _llm_call(prompt)
-        # 解析 JSON（兼容 markdown 代码块）
         if raw.strip().startswith("```"):
             raw = raw.split("\n", 1)[1].rsplit("```", 1)[0]
         result = json.loads(raw)
@@ -194,14 +205,67 @@ def analyze_stock_comprehensive(
         logger.error("LLM 分析失败: %s", e)
         return {"error": f"LLM分析失败: {e}", "raw_response": raw if 'raw' in dir() else ""}
 
-    # 4. 补充元数据
+    # 3. 补充元数据
     result["stock_code"] = stock_code
     result["scope"] = scope
     result["analyzed_at"] = datetime.now().isoformat()
+    result["cached"] = False
+    result["trigger_reason"] = trigger_reason
     result["data_sources"] = {
         "akshare": "basic" in data and "error" not in str(data.get("basic", "")),
         "cninfo_announcements": len(data.get("announcements", [])),
         "djyanbao_reports": len(data.get("reports", [])),
+        "hibor_reports": len(data.get("hibor_reports", [])),
     }
 
+    # 4. 构建指纹并持久化
+    fingerprint = build_fingerprint(
+        data.get("quote", {}),
+        data.get("valuation", {}),
+        data.get("announcements", []),
+        data.get("reports", []) + data.get("hibor_reports", []),
+    )
+    save_evaluation(stock_code, scope, result, fingerprint, trigger_reason)
+
+    return result
+
+
+def analyze_stock_comprehensive(
+    stock_code: str,
+    scope: str = "all",
+    force_refresh: bool = False,
+) -> Dict[str, Any]:
+    """综合分析股票（带智能缓存）
+
+    Args:
+        stock_code: 股票代码
+        scope: 分析范围 short/mid/long/all
+        force_refresh: 强制刷新，忽略缓存
+
+    Returns:
+        LLM 分析结果，含 cached / trigger_reason 字段
+    """
+    if not _API_KEY:
+        return {"error": "DEEPSEEK_API_KEY 未配置"}
+
+    # 强制刷新 → 直接全量评估
+    if force_refresh:
+        return _do_full_evaluation(stock_code, scope, "force_refresh")
+
+    # 查询缓存
+    cached = get_cached_evaluation(stock_code, scope)
+    if not cached:
+        return _do_full_evaluation(stock_code, scope, "initial")
+
+    # 触发检测
+    should_refresh, reason = check_triggers(cached, stock_code)
+    if should_refresh:
+        return _do_full_evaluation(stock_code, scope, reason)
+
+    # 返回缓存结论
+    logger.info("复用缓存评估: %s scope=%s", stock_code, scope)
+    result = cached.get("result", {})
+    result["cached"] = True
+    result["trigger_reason"] = "none"
+    result["cached_at"] = cached.get("evaluated_at", "")
     return result

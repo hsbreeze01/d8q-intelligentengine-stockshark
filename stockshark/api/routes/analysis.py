@@ -352,8 +352,9 @@ def comprehensive_analysis():
     """LLM 驱动的股票综合分析
 
     POST /api/analysis/stock/comprehensive
-    Body: {"stock_code": "603009", "scope": "all"}
+    Body: {"stock_code": "603009", "scope": "all", "force_refresh": false}
     scope: short/mid/long/all
+    force_refresh: 强制刷新缓存(可选,默认false)
     """
     from stockshark.analysis.llm_analyzer import analyze_stock_comprehensive
 

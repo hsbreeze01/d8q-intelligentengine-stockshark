@@ -174,7 +174,7 @@ class DatabaseManager:
             cls._mongodb_available = True
             mongodb_conn = client[Config.MONGODB_DATABASE]
             
-            collections = ['news', 'analysis_results', 'scenario_analysis']
+            collections = ['news', 'analysis_results', 'scenario_analysis', 'stock_evaluations']
             for coll_name in collections:
                 if coll_name not in mongodb_conn.list_collection_names():
                     mongodb_conn.create_collection(coll_name)
