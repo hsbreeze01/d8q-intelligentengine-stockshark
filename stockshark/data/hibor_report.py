@@ -105,7 +105,11 @@ def _playwright_search(keyword: str, days: int = 7) -> List[Dict]:
                 "title": title, "org": meta["org"], "date": meta["date"],
                 "summary": meta["summary"], "detail_url": _BASE + href, "source": "hibor",
             })
-        logger.info("慧博搜索 '%s' 获取 %d 条研报", keyword, len(reports))
+        # 过滤：只保留标题中包含关键词的研报（去除噪音）
+        relevant = [r for r in reports if keyword in r.get("title", "")]
+        if relevant:
+            reports = relevant
+        logger.info("慧博搜索 '%s' 获取 %d 条研报 (过滤前 %d)", keyword, len(reports), len(reports) + len([r for r in reports if keyword not in r.get("title", "")]) if relevant else 0)
         return reports
 
     except Exception as e:
