@@ -93,12 +93,13 @@ def _playwright_search(keyword: str, days: int = 7) -> List[Dict]:
 
         # Parse results
         reports = []
-        pattern = r'<a[^>]+href="(/data/[^"]+\.html)"[^>]*>([^<]+)</a>'
+        pattern = r'<a[^>]+href="(/data/[^"]+\.html)"[^>]*>(.+?)</a>'
         seen = set()
         for href, title in re.findall(pattern, html):
             if len(title) < 5 or href in seen:
                 continue
             seen.add(href)
+            title = re.sub(r'<[^>]+>', '', title)  # strip <em> etc
             meta = _parse_title(title)
             reports.append({
                 "title": title, "org": meta["org"], "date": meta["date"],
