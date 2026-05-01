@@ -442,3 +442,29 @@ def health_check():
         'success': True,
         'message': '股票搜索API服务正常'
     })
+
+
+
+@search_bp.route('/stock/map', methods=['GET'])
+def stock_code_map():
+    """批量查询 code->name 映射"""
+    codes_str = request.args.get('codes', '')
+    if not codes_str:
+        return jsonify({}), 200
+    codes = [c.strip() for c in codes_str.split(',') if c.strip()]
+    from stockshark.utils.database import get_mysql_connection
+    result = {}
+    try:
+        conn = get_mysql_connection()
+        cursor = conn.cursor()
+        placeholders = ','.join(['%s'] * len(codes))
+        cursor.execute(f"SELECT code, name FROM stock_basic WHERE code IN ({placeholders})", codes)
+        for row in cursor.fetchall():
+            result[row['code']] = row['name']
+        conn.close()
+    except Exception:
+        pass
+    for c in codes:
+        if c not in result:
+            result[c] = None
+    return jsonify(result), 200
