@@ -13,6 +13,7 @@ from datetime import datetime
 from typing import Dict, Any, Optional
 
 import requests
+import time
 
 from stockshark.data.akshare_data import AkShareData
 from stockshark.data.announcement import get_announcements
@@ -38,17 +39,27 @@ except Exception:
     pass
 
 
-def _llm_call(prompt: str, max_tokens: int = 4000) -> str:
-    """调用 DeepSeek LLM"""
-    resp = requests.post(
-        f"{_BASE_URL}/v1/chat/completions",
-        headers={"Authorization": f"Bearer {_API_KEY}", "Content-Type": "application/json"},
-        json={"model": _MODEL, "messages": [{"role": "user", "content": prompt}],
-              "temperature": 0.3, "max_tokens": max_tokens},
-        timeout=60,
-    )
-    resp.raise_for_status()
-    return resp.json()["choices"][0]["message"]["content"]
+def _llm_call(prompt: str, max_tokens: int = 4000, max_retries: int = 2) -> str:
+    """调用 DeepSeek LLM（含重试）"""
+    last_err = None
+    for attempt in range(max_retries + 1):
+        try:
+            resp = requests.post(
+                f"{_BASE_URL}/v1/chat/completions",
+                headers={"Authorization": f"Bearer {_API_KEY}", "Content-Type": "application/json"},
+                json={"model": _MODEL, "messages": [{"role": "user", "content": prompt}],
+                      "temperature": 0.3, "max_tokens": max_tokens},
+                timeout=60,
+            )
+            resp.raise_for_status()
+            return resp.json()["choices"][0]["message"]["content"]
+        except Exception as e:
+            last_err = e
+            if attempt < max_retries:
+                wait = 2 ** attempt
+                logger.warning("LLM call failed (%s), retry in %ds (attempt %d/%d)...", e, wait, attempt + 1, max_retries)
+                time.sleep(wait)
+    raise last_err
 
 
 def _gather_data(stock_code: str) -> Dict[str, Any]:
