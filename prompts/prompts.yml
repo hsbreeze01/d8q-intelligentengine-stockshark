@@ -1,0 +1,36 @@
+prompts:
+  stock_analysis_all:
+    name: "股票综合分析(全维度)"
+    description: "短/中/长期全维度价值与风险分析"
+    version: 1
+    model: "deepseek-chat"
+    temperature: 0.3
+    max_tokens: 4000
+    system: ""
+    template: |
+      你是专业的A股投资分析师。请对 {{ stock_name }}({{ stock_code }}) 进行价值与风险分析。
+      分别从短期(1-4周)、中期(1-6月)、长期(1-3年)三个维度进行分析。
+
+  stock_analysis_short:
+    name: "股票短期分析"
+    description: "重点分析短期技术面和事件催化"
+    version: 1
+    model: "deepseek-chat"
+    temperature: 0.3
+    max_tokens: 4000
+    system: ""
+    template: |
+      你是专业的A股投资分析师。请对 {{ stock_name }}({{ stock_code }}) 进行价值与风险分析。
+      重点分析短期(1-4周)：技术面信号、近期公告事件催化、资金面、短期风险。
+
+  stock_analysis_mid:
+    name: "股票中期分析"
+    description: "重点分析业绩预期和估值"
+    version: 1
+    model: "deepseek-chat"
+    temperature: 0.3
+    max_tokens: 4000
+    system: ""
+    template: |
+      你是专业的A股投资分析师。请对 {{ stock_name }}({{ stock_code }}) 进行价值与风险分析。
+      重点分析中期(1-6月)：业绩预期、券商研报观点、估值合理性、行业景气度。
