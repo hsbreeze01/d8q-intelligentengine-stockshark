@@ -8,6 +8,7 @@ from stockshark.api.routes.search import search_bp
 from stockshark.api.routes.supply_chain import supply_chain_bp
 from stockshark.api.routes.announcement import announcement_bp
 from stockshark.api.routes.report import report_bp
+from stockshark.api.routes.prompts import prompts_bp
 
 
 def create_app(config=None):
@@ -39,6 +40,7 @@ def create_app(config=None):
     app.register_blueprint(supply_chain_bp, url_prefix=f'{Config.API_PREFIX}/supply-chain')
     app.register_blueprint(announcement_bp, url_prefix=f'{Config.API_PREFIX}/announcement')
     app.register_blueprint(report_bp, url_prefix=f'{Config.API_PREFIX}/report')
+    app.register_blueprint(prompts_bp, url_prefix=f'{Config.API_PREFIX}/prompts')
     
     @app.route('/health', methods=['GET'])
     def health_check():

@@ -127,7 +127,11 @@ def _gather_data(stock_code: str) -> Dict[str, Any]:
 
 
 def _build_prompt(data: Dict, scope: str) -> str:
-    """构建分析 Prompt"""
+    """构建分析 Prompt（支持从 prompts.yml 动态加载）"""
+    # 尝试从配置加载 scope 对应的 prompt
+    scope_map = {short: stock_analysis_short, mid: stock_analysis_mid, all: stock_analysis_all}
+    prompt_cfg = _pm.get(scope_map.get(scope, stock_analysis_all))
+    _loaded_system = prompt_cfg.get(system, ) if prompt_cfg else 
     stock_name = data.get("stock_name", data["stock_code"])
     basic = json.dumps(data.get("basic", {}), ensure_ascii=False, default=str)[:800]
     quote = json.dumps(data.get("quote", {}), ensure_ascii=False, default=str)[:500]
