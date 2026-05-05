@@ -31,6 +31,17 @@ def _classify(item: Dict) -> str:
     return "行业研报"
 
 
+def _extract_summary(r):
+    highlight = r.get("highlight") or {}
+    contents = highlight.get("content") or []
+    if contents:
+        import re as _re
+        text = _re.sub(r"<[^>]+>", "", contents[0])
+        return text[:200].strip()
+    return ""
+
+
+
 def get_reports(
     keyword: str,
     page: int = 1,
