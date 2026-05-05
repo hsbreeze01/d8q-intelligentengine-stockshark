@@ -73,6 +73,7 @@ def get_reports(
             "pages": r.get("pageTotal", 0),
             "file_size_kb": round(r.get("fileSize", 0) / 1024),
             "stock_name": r.get("stockName", ""),
+            "summary": _extract_summary(r),
             "detail_url": f"https://www.djyanbao.com/report/detail?id={r.get('id')}",
         })
 
