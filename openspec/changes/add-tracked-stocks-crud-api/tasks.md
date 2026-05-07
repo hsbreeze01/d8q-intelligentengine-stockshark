@@ -7,7 +7,7 @@
 
 ## 2. Service Layer
 
-- [ ] 2.1 Create `stockshark/services/tracked_stock_service.py` with `TrackedStockService` class
+- [x] 2.1 Create `stockshark/services/tracked_stock_service.py` with `TrackedStockService` class
   - Methods: `list_all`, `list_by_group`, `get_by_id`, `add`, `update`, `delete`, `batch_add`, `get_groups`
   - Use `stockshark/utils/database.py::get_mysql_connection()` for DB access
   - Auto-fill `stock_name` from `stock_basic_info` table when omitted
