@@ -15,7 +15,7 @@
 
 ## 3. API Routes
 
-- [ ] 3.1 Create `stockshark/api/routes/tracked_stocks.py` with `tracked_stocks_bp` Blueprint
+- [x] 3.1 Create `stockshark/api/routes/tracked_stocks.py` with `tracked_stocks_bp` Blueprint
   - Endpoints: list, add, update, delete, batch-add, groups
   - Follow existing route patterns (try/except, `{ "success": ..., "data": ... }`)
   - Files: `stockshark/api/routes/tracked_stocks.py`
