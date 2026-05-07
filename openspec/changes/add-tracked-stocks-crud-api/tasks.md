@@ -20,7 +20,7 @@
   - Follow existing route patterns (try/except, `{ "success": ..., "data": ... }`)
   - Files: `stockshark/api/routes/tracked_stocks.py`
 
-- [ ] 3.2 Register `tracked_stocks_bp` in `stockshark/api/app.py`
+- [x] 3.2 Register `tracked_stocks_bp` in `stockshark/api/app.py`
   - Files: `stockshark/api/app.py`
 
 ## 4. Tests
