@@ -80,11 +80,13 @@ class TrackedStockService:
                 "SELECT name FROM stock_basic_info WHERE symbol = %s", (stock_code,)
             )
             row = cursor.fetchone()
-            conn.close()
             if row and row["name"]:
                 return row["name"]
         except Exception as e:
             logger.warning(f"自动填充股票名称失败: {e}")
+        finally:
+            if conn:
+                conn.close()
         return stock_code
 
     def _is_duplicate(self, stock_code):
