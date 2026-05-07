@@ -150,6 +150,19 @@ class DatabaseManager:
                                 FOREIGN KEY (upstream_company_id) REFERENCES company(id),
                                 FOREIGN KEY (downstream_company_id) REFERENCES company(id)
                             ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+                        '''),
+                        ('tracked_stock', '''
+                            CREATE TABLE IF NOT EXISTS tracked_stock (
+                                id INT AUTO_INCREMENT PRIMARY KEY,
+                                stock_code VARCHAR(20) NOT NULL UNIQUE COMMENT '股票代码',
+                                stock_name VARCHAR(50) NOT NULL COMMENT '股票名称',
+                                group_name VARCHAR(50) DEFAULT NULL COMMENT '分组名称',
+                                sort_order INT NOT NULL DEFAULT 0 COMMENT '排序权重',
+                                notes TEXT DEFAULT NULL COMMENT '备注',
+                                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+                                INDEX idx_group_name (group_name)
+                            ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='关注股票表';
                         ''')
                     ]
                     
