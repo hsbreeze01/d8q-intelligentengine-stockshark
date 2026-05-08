@@ -1,40 +1,53 @@
 import akshare as ak
 import pandas as pd
+import logging
 from datetime import datetime
+from stockshark.data.fetcher import fetcher
+
+logger = logging.getLogger(__name__)
+
+
+def _safe_float(val, default=0.0):
+    if val is None:
+        return default
+    try:
+        f = float(val)
+        return default if f != f else f
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_int(val, default=0):
+    if val is None:
+        return default
+    try:
+        return int(val)
+    except (ValueError, TypeError):
+        return default
+
+
+def _safe_str(val, default=''):
+    if val is None or pd.isna(val):
+        return default
+    return str(val)
+
 
 class AkShareData:
-    """
-    akshare数据源封装类，提供股票基本信息、行情数据、财务数据的获取功能
-    """
-    
-    def __init__(self):
-        pass
-    
+
     def get_stock_basic_info(self, symbol: str) -> dict:
-        """
-        获取股票基本信息
-        :param symbol: 股票代码，如 '000001' (深市) 或 '600000' (沪市)
-        :return: 股票基本信息字典
-        """
         try:
-            # 获取全部股票基本信息
             stock_info = ak.stock_info_a_code_name()
-            
-            # 转换为DataFrame
             df = pd.DataFrame(stock_info, columns=['code', 'name'])
-            
-            # 查找指定股票
             stock = df[df['code'] == symbol]
-            
+
             if stock.empty:
                 return None
-            
-            # 获取更详细的股票信息
+
             industry = ''
             concept = ''
             region = ''
             full_name = ''
-            
+
             try:
                 detail_info = ak.stock_individual_info_em(symbol=symbol)
                 if not detail_info.empty:
@@ -43,16 +56,15 @@ class AkShareData:
                     region = detail_dict.get('地区', '')
                     full_name = detail_dict.get('股票简称', '')
             except Exception as e:
-                print(f"获取详细信息失败: {e}")
-            
-            # 获取概念信息
+                logger.warning("stock_individual_info_em failed for %s: %s", symbol, e)
+
             try:
                 concepts = self.get_stock_concepts(symbol, limit=10)
                 concept = '、'.join(concepts) if concepts else ''
             except Exception as e:
-                print(f"获取概念信息失败: {e}")
-            
-            result = {
+                logger.warning("get_stock_concepts failed for %s: %s", symbol, e)
+
+            return {
                 'code': symbol,
                 'name': stock['name'].values[0],
                 'full_name': full_name,
@@ -61,248 +73,172 @@ class AkShareData:
                 'region': region,
                 'market': '深市' if symbol.startswith('00') or symbol.startswith('30') else '沪市'
             }
-            
-            return result
         except Exception as e:
-            print(f"获取股票基本信息失败: {e}")
+            logger.error("get_stock_basic_info failed for %s: %s", symbol, e)
             return None
-    
+
     def get_stock_quote(self, symbol: str) -> dict:
-        """
-        获取股票实时行情数据
-        :param symbol: 股票代码，如 '000001' (深市) 或 '600000' (沪市)
-        :return: 股票行情数据字典
-        """
+        # Uses Sina source (stock_zh_a_spot) instead of blocked EM
+        def _fetch_all():
+            return ak.stock_zh_a_spot()
+
         try:
-            # 获取实时行情
-            df = ak.stock_zh_a_spot_em()
-            
-            # 查找指定股票
+            df = fetcher.fetch('stock_zh_a_spot_sina', _fetch_all, ttl=1800)
             stock = df[df['代码'] == symbol]
-            
+
             if stock.empty:
                 return None
-            
-            result = {
+
+            return {
                 'code': symbol,
-                'name': stock['名称'].values[0],
-                'price': stock['最新价'].values[0],
-                'change': stock['涨跌额'].values[0],
-                'change_pct': stock['涨跌幅'].values[0],
-                'volume': stock['成交量'].values[0],
-                'amount': stock['成交额'].values[0],
-                'open': stock['今开'].values[0],
-                'high': stock['最高'].values[0],
-                'low': stock['最低'].values[0],
-                'previous_close': stock['昨收'].values[0],
+                'name': _safe_str(stock['名称'].values[0]),
+                'price': _safe_float(stock['最新价'].values[0]),
+                'change': _safe_float(stock['涨跌额'].values[0]),
+                'change_pct': _safe_float(stock['涨跌幅'].values[0]),
+                'volume': _safe_float(stock['成交量'].values[0]),
+                'amount': _safe_float(stock['成交额'].values[0]),
+                'open': _safe_float(stock['今开'].values[0]),
+                'high': _safe_float(stock['最高'].values[0]),
+                'low': _safe_float(stock['最低'].values[0]),
+                'previous_close': _safe_float(stock['昨收'].values[0]),
                 'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
             }
-            
-            return result
         except Exception as e:
-            print(f"获取股票行情数据失败: {e}")
+            logger.error("get_stock_quote failed for %s: %s", symbol, e)
             return None
-    
+
     def get_stock_history_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
-        """
-        获取股票历史行情数据
-        :param symbol: 股票代码，如 '000001' (深市) 或 '600000' (沪市)
-        :param start_date: 开始日期，格式 'YYYY-MM-DD'
-        :param end_date: 结束日期，格式 'YYYY-MM-DD'
-        :return: 股票历史行情数据DataFrame
-        """
         try:
-            # 构造股票代码（带交易所前缀）
             if symbol.startswith('00') or symbol.startswith('30'):
                 ak_symbol = f"sz{symbol}"
             else:
                 ak_symbol = f"sh{symbol}"
-            
-            # 获取历史数据
-            df = ak.stock_zh_a_hist(
+
+            return ak.stock_zh_a_hist(
                 symbol=ak_symbol,
                 period="daily",
                 start_date=start_date,
                 end_date=end_date,
                 adjust="qfq"
             )
-            
-            return df
         except Exception as e:
-            print(f"获取股票历史数据失败: {e}")
+            logger.error("get_stock_history_data failed: %s", e)
             return pd.DataFrame()
-    
+
     def get_stock_financial_data(self, symbol: str, report_type: str = 'annual') -> pd.DataFrame:
-        """
-        获取股票财务数据
-        :param symbol: 股票代码，如 '000001' (深市) 或 '600000' (沪市)
-        :param report_type: 报告类型，'annual' (年报), 'quarterly' (季报)
-        :return: 股票财务数据DataFrame
-        """
         try:
-            # 使用东方财富接口获取财务数据
-            df = ak.stock_financial_analysis_indicator(symbol=symbol)
-            
-            return df
+            return ak.stock_financial_analysis_indicator(symbol=symbol)
         except Exception as e:
-            print(f"获取股票财务数据失败: {e}")
+            logger.error("get_stock_financial_data failed: %s", e)
             return pd.DataFrame()
-    
+
     def get_stock_valuation_data(self, symbol: str) -> dict:
-        """
-        获取股票估值数据
-        :param symbol: 股票代码，如 '000001' (深市) 或 '600000' (沪市)
-        :return: 股票估值数据字典
-        """
         try:
-            # 获取股票估值数据
             df = ak.stock_zh_valuation_baidu(symbol=symbol)
-            
             if df.empty:
                 return None
-            
+
             result = {
                 'code': symbol,
-                'pe_ttm': df.get('市盈率(TTM)', pd.Series([0])).values[0] if '市盈率(TTM)' in df.columns else 0,
-                'pe_lyr': df.get('市盈率(LYR)', pd.Series([0])).values[0] if '市盈率(LYR)' in df.columns else 0,
-                'pb': df.get('市净率', pd.Series([0])).values[0] if '市净率' in df.columns else 0,
-                'ps_ttm': df.get('市销率(TTM)', pd.Series([0])).values[0] if '市销率(TTM)' in df.columns else 0,
-                'pcf_ttm': df.get('市现率(TTM)', pd.Series([0])).values[0] if '市现率(TTM)' in df.columns else 0
+                'pe_ttm': _safe_float(df.get('市盈率(TTM)', pd.Series([0])).values[0]),
+                'pe_lyr': _safe_float(df.get('市盈率(LYR)', pd.Series([0])).values[0]),
+                'pb': _safe_float(df.get('市净率', pd.Series([0])).values[0]),
+                'ps_ttm': _safe_float(df.get('市销率(TTM)', pd.Series([0])).values[0]),
+                'pcf_ttm': _safe_float(df.get('市现率(TTM)', pd.Series([0])).values[0])
             }
-            
             return result
         except Exception as e:
-            print(f"获取股票估值数据失败: {e}")
+            logger.error("get_stock_valuation_data failed: %s", e)
             return None
-    
+
     def get_industry_stocks(self, industry_name: str) -> list:
-        """
-        获取指定行业的所有股票
-        :param industry_name: 行业名称
-        :return: 行业股票列表
-        """
+        # THS: returns industry summary (not constituent stock list)
         try:
-            # 获取行业分类数据
-            industry_df = ak.stock_board_industry_name_em()
-            
-            # 查找指定行业
-            industry_info = industry_df[industry_df['板块名称'] == industry_name]
-            
-            if industry_info.empty:
+            def _fetch():
+                return ak.stock_board_industry_info_ths(symbol=industry_name)
+
+            df = fetcher.fetch(
+                f'industry_info_ths:{industry_name}',
+                _fetch,
+                ttl=1800
+            )
+
+            if df.empty:
                 return []
-            
-            # 获取行业成分股
-            stocks = ak.stock_board_industry_cons_em(symbol=industry_info['板块代码'].values[0])
-            
-            return stocks.to_dict('records')
+
+            result = {}
+            for _, row in df.iterrows():
+                key = _safe_str(row.iloc[0])
+                val = row.iloc[1] if len(row) > 1 else ''
+                result[key] = val
+
+            return [{
+                'industry_name': industry_name,
+                'detail': result
+            }]
         except Exception as e:
-            print(f"获取行业股票数据失败: {e}")
-            return []
-    
-    def get_concept_stocks(self, concept_name: str) -> list:
-        """
-        获取指定概念的所有股票
-        :param concept_name: 概念名称
-        :return: 概念股票列表
-        """
-        try:
-            # 获取概念分类数据
-            concept_df = ak.stock_board_concept_name_em()
-            
-            # 查找指定概念
-            concept_info = concept_df[concept_df['板块名称'] == concept_name]
-            
-            if concept_info.empty:
-                return []
-            
-            # 获取概念成分股
-            stocks = ak.stock_board_concept_cons_em(symbol=concept_info['板块代码'].values[0])
-            
-            return stocks.to_dict('records')
-        except Exception as e:
-            print(f"获取概念股票数据失败: {e}")
-            return []
-    
-    def get_stock_concepts(self, symbol: str, limit: int = 5) -> list:
-        """
-        获取股票所属的概念列表
-        :param symbol: 股票代码
-        :param limit: 返回概念数量限制
-        :return: 概念名称列表
-        """
-        try:
-            concepts = []
-            
-            # 获取所有概念板块
-            concept_df = ak.stock_board_concept_name_em()
-            
-            # 遍历所有概念板块
-            for idx, row in concept_df.iterrows():
-                concept_name = row['板块名称']
-                concept_code = row['板块代码']
-                
-                try:
-                    # 获取该概念的成分股
-                    cons_df = ak.stock_board_concept_cons_em(symbol=concept_code)
-                    
-                    # 检查是否包含目标股票
-                    if not cons_df.empty and symbol in cons_df['代码'].values:
-                        concepts.append(concept_name)
-                        
-                        if len(concepts) >= limit:
-                            break
-                except Exception as e:
-                    continue
-            
-            return concepts
-        except Exception as e:
-            print(f"获取股票概念失败: {e}")
-            return []
-    
-    def get_all_stocks(self) -> list:
-        """
-        获取所有A股股票列表
-        :return: 所有A股股票列表
-        """
-        try:
-            # 获取全部股票基本信息
-            stock_info = ak.stock_info_a_code_name()
-            
-            # 转换为DataFrame
-            df = pd.DataFrame(stock_info, columns=['code', 'name'])
-            
-            return df.to_dict('records')
-        except Exception as e:
-            print(f"获取所有股票数据失败: {e}")
-            return []
-    
-    def get_all_industries(self) -> list:
-        """
-        获取所有行业列表
-        :return: 行业名称列表
-        """
-        try:
-            # 获取行业分类数据
-            industry_df = ak.stock_board_industry_name_em()
-            
-            return industry_df['板块名称'].tolist()
-        except Exception as e:
-            print(f"获取行业列表失败: {e}")
-            return []
-    
-    def get_all_concepts(self) -> list:
-        """
-        获取所有概念列表
-        :return: 概念名称列表
-        """
-        try:
-            # 获取概念分类数据
-            concept_df = ak.stock_board_concept_name_em()
-            
-            return concept_df['板块名称'].tolist()
-        except Exception as e:
-            print(f"获取概念列表失败: {e}")
+            logger.error("get_industry_stocks failed for %s: %s", industry_name, e)
             return []
 
-# 创建全局实例
+    def get_concept_stocks(self, concept_name: str) -> list:
+        # THS: returns concept summary (not constituent stock list)
+        try:
+            def _fetch():
+                return ak.stock_board_concept_summary_ths()
+
+            df = fetcher.fetch('concept_summary_ths', _fetch, ttl=1800)
+
+            matched = df[df['概念名称'] == concept_name]
+            if matched.empty:
+                return []
+
+            row = matched.iloc[0]
+            return [{
+                'concept_name': concept_name,
+                'driver_event': _safe_str(row.get('驱动事件', '')),
+                'leading_stock': _safe_str(row.get('龙头股', '')),
+                'stock_count': _safe_int(row.get('成分股数量', 0))
+            }]
+        except Exception as e:
+            logger.error("get_concept_stocks failed for %s: %s", concept_name, e)
+            return []
+
+    def get_stock_concepts(self, symbol: str, limit: int = 5) -> list:
+        # DEPRECATED: reverse lookup requires iterating all concepts — impractical
+        return []
+
+    def get_all_stocks(self) -> list:
+        try:
+            stock_info = ak.stock_info_a_code_name()
+            df = pd.DataFrame(stock_info, columns=['code', 'name'])
+            return df.to_dict('records')
+        except Exception as e:
+            logger.error("get_all_stocks failed: %s", e)
+            return []
+
+    def get_all_industries(self) -> list:
+        # THS replacement for stock_board_industry_name_em
+        try:
+            def _fetch():
+                return ak.stock_board_industry_name_ths()
+
+            df = fetcher.fetch('industry_name_ths', _fetch, ttl=86400)
+            return df['name'].tolist()
+        except Exception as e:
+            logger.error("get_all_industries failed: %s", e)
+            return []
+
+    def get_all_concepts(self) -> list:
+        # THS replacement for stock_board_concept_name_em
+        try:
+            def _fetch():
+                return ak.stock_board_concept_name_ths()
+
+            df = fetcher.fetch('concept_name_ths', _fetch, ttl=86400)
+            return df['name'].tolist()
+        except Exception as e:
+            logger.error("get_all_concepts failed: %s", e)
+            return []
+
+
 akshare_data = AkShareData()
