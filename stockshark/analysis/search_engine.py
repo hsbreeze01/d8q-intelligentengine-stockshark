@@ -364,5 +364,61 @@ class SearchEngine:
             print(f"获取概念列表失败: {e}")
             return []
 
+    def get_industries_summary(self, limit: int = 20) -> List[Dict[str, Any]]:
+        """
+        获取行业板块概览（含涨跌幅等）
+        :param limit: 返回数量限制
+        :return: 行业摘要列表
+        """
+        try:
+            import akshare as ak
+            df = ak.stock_board_industry_name_em()
+            result = []
+            for _, row in df.head(limit).iterrows():
+                result.append({
+                    'name': str(row.get('板块名称', '')),
+                    'code': str(row.get('板块代码', '')),
+                    'change_pct': float(row.get('涨跌幅', 0)) if row.get('涨跌幅') is not None else 0,
+                    'price': float(row.get('最新价', 0)) if row.get('最新价') is not None else 0,
+                    'market_cap': float(row.get('总市值', 0)) if row.get('总市值') is not None else 0,
+                    'turnover': float(row.get('换手率', 0)) if row.get('换手率') is not None else 0,
+                    'up_count': int(row.get('上涨家数', 0)) if row.get('上涨家数') is not None else 0,
+                    'down_count': int(row.get('下跌家数', 0)) if row.get('下跌家数') is not None else 0,
+                    'leading_stock': str(row.get('领涨股票', '')) if row.get('领涨股票') else '',
+                    'leading_change': float(row.get('领涨股票-涨跌幅', 0)) if row.get('领涨股票-涨跌幅') is not None else 0,
+                })
+            return result
+        except Exception as e:
+            print(f"获取行业概览失败: {e}")
+            return []
+
+    def get_concepts_summary(self, limit: int = 30) -> List[Dict[str, Any]]:
+        """
+        获取概念板块概览（含涨跌幅等）
+        :param limit: 返回数量限制
+        :return: 概念摘要列表
+        """
+        try:
+            import akshare as ak
+            df = ak.stock_board_concept_name_em()
+            result = []
+            for _, row in df.head(limit).iterrows():
+                result.append({
+                    'name': str(row.get('板块名称', '')),
+                    'code': str(row.get('板块代码', '')),
+                    'change_pct': float(row.get('涨跌幅', 0)) if row.get('涨跌幅') is not None else 0,
+                    'price': float(row.get('最新价', 0)) if row.get('最新价') is not None else 0,
+                    'market_cap': float(row.get('总市值', 0)) if row.get('总市值') is not None else 0,
+                    'turnover': float(row.get('换手率', 0)) if row.get('换手率') is not None else 0,
+                    'up_count': int(row.get('上涨家数', 0)) if row.get('上涨家数') is not None else 0,
+                    'down_count': int(row.get('下跌家数', 0)) if row.get('下跌家数') is not None else 0,
+                    'leading_stock': str(row.get('领涨股票', '')) if row.get('领涨股票') else '',
+                    'leading_change': float(row.get('领涨股票-涨跌幅', 0)) if row.get('领涨股票-涨跌幅') is not None else 0,
+                })
+            return result
+        except Exception as e:
+            print(f"获取概念概览失败: {e}")
+            return []
+
 # 创建全局实例
 search_engine = SearchEngine()

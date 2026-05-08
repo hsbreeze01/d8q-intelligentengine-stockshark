@@ -468,3 +468,17 @@ def stock_code_map():
         if c not in result:
             result[c] = None
     return jsonify(result), 200
+
+
+@search_bp.route('/industries/summary', methods=['GET'])
+def get_industries_summary():
+    limit = int(request.args.get('limit', 20))
+    result = search_engine.get_industries_summary(limit=limit)
+    return jsonify({'success': True, 'data': result})
+
+
+@search_bp.route('/concepts/summary', methods=['GET'])
+def get_concepts_summary():
+    limit = int(request.args.get('limit', 30))
+    result = search_engine.get_concepts_summary(limit=limit)
+    return jsonify({'success': True, 'data': result})
