@@ -1,77 +1,118 @@
-## Context
+# Design: Pipeline-StockShark 融合方案
 
-当前远程服务器上的数据服务分布：
+## 架构决策
 
-| 服务 | 端口 | 职责 | 状态 |
-|---|---|---|---|
-| d8q-stockshark | :5000 | 股票分析、搜索、供应链分析 | 运行中 |
-| d8q-datapipeline | APScheduler | K线采集、指标计算、分析 | daemon 运行中(16:30)，analysis 后台跑 |
-| d8q-compass | :8087 | 前端展示、buy_advice 分析 | 运行中 |
+### 1. 新增 pipeline 模块（而非分散到现有模块）
 
-**Pipeline 数据完成状态（05-13 12:30）：**
-- `stock_data_daily`：5200 股票，289 万行 ✅ 完成
-- `indicators_daily`：5200 股票，288 万行 ✅ 完成
-- `stock_analysis`：3 股票完成，全量还在后台跑（预估 30+h）🔄
+**决策**：在 `stockshark/` 下新增 `pipeline/` 子包，集中管理 K 线采集、指标计算、daemon 调度的逻辑。
 
-StockShark 已有的数据能力（`stockshark/data/crawler.py`）：
-- `StockDataCrawler.crawl_stock_daily_trade()` — 单股 K线采集（东财源）
-- `StockDataCrawler.crawl_today_trade_data()` — 全量今日数据
-- `StockDataCrawler.crawl_incremental_basic_info()` — 增量股票信息
-- `AkShareData` — akshare 数据封装层（带缓存 fetcher）
+**理由**：
+- pipeline 职责与现有 `data/crawler.py`（东财单次采集）不同，pipeline 需要增量逻辑、降级、批量调度
+- 与现有 `analysis/` 模块解耦，analysis 负责 LLM 分析，pipeline 负责数值计算
+- 便于独立测试和后续可能的再次拆分
 
-Pipeline 已有的能力（需迁移，`compass/scripts/`）：
-- `pipeline_fetcher.fetch_kline_daily()` — 新浪数据源（akshare stock_zh_a_daily）
-- `pipeline_db.calc_and_save_indicators()` — TA-Lib 指标（SMA/EMA/MACD/RSI/KDJ/BOLL/ATR）
-- `pipeline_db.analyze_and_save()` — 综合分析（buy_advice_v2）
-- `pipeline.py` daemon 模式（APScheduler，每日 16:30 增量）
+### 2. 数据源抽象（策略模式）
 
-关键依赖/陷阱：
-- `dicStock` 全局变量：`from buy.cache import *` 会触发 `DicStockFactory()` 查 `dic_stock` 表（为空），导致 import 崩溃
-- StockShark 的 crawler 不依赖 `dicStock`，可以安全复用
-- 新浪接口 `stock_zh_a_daily` 可用，东财 `stock_zh_a_hist` 封禁
+**决策**：K 线采集通过 `KLineFetcher` 基类 + `AkshareEastmoneyFetcher` / `AkshareSinaFetcher` 两个实现，外部调用不关心数据源。
 
-## Goals / Non-Goals
+**理由**：
+- akshare 的东财接口 `stock_zh_a_hist` 和新浪接口 `stock_zh_a_daily` 参数和返回格式不同，需要适配层
+- 策略模式支持未来扩展其他数据源（如 tuShare）
 
-**Goals:**
-- Phase 1：StockShark 增加新浪数据源 + TA-Lib 指标计算模块（与 pipeline daemon 并行）
-- Phase 2：StockShark 增加 daemon 调度模式（集成到 Flask）
-- Phase 3：全量 analysis 完成后，pipeline 下线，StockShark 接管
+### 3. TA-Lib vs pandas-ta
 
-**Non-Goals:**
-- 不改 compass 的数据获取路径（继续直连 DB）
-- 不合并数据库表
-- 不重构 StockShark 整体架构
+**决策**：优先使用 `pandas-ta`（纯 Python），不依赖 TA-Lib C 库。
 
-## Decisions
+**理由**：
+- TA-Lib C 库需要系统级安装（`libta-lib-dev`），在目标服务器上增加部署复杂度
+- `pandas-ta` 纯 Python，pip install 即可，且覆盖全部所需指标
+- 对性能影响可忽略（计算量不大）
 
-### D1: 数据源 — 新浪优先
+### 4. APScheduler 集成到 Flask
 
-**选择**: StockShark 使用 `stock_zh_a_daily`（新浪），东财作为降级
-**理由**: 东财接口持续不稳定（已确认封禁），新浪接口可用且稳定
+**决策**：使用 `APScheduler` 的 `BackgroundScheduler`，在 `create_app()` 中初始化，与 Flask 共享进程。
 
-### D2: 指标计算 — 独立模块
+**理由**：
+- 无需额外进程，不增加内存占用
+- 共享 Flask 应用上下文（数据库连接等）
+- 与 proposal 中"不增实体"原则一致
 
-**选择**: 新建 `stockshark/indicators/` 模块，自包含 TA-Lib 计算
-**理由**: 不 import compass 的 `stock_task.py`（会触发 dicStock 崩溃）
-**参考**: `compass/scripts/pipeline_db.py` 中的 `calc_and_save_indicators()` 实现
+### 5. 数据表复用
 
-### D3: Daemon — 集成到 StockShark Flask
+**决策**：直接使用 compass-data-pipeline 已创建的 `stock_data_daily` 和 `indicators_daily` 表，不新建表。
 
-**选择**: 在 StockShark Flask app 中增加 APScheduler 后台调度
-**理由**: 不新增进程，复用现有 service
+**理由**：
+- compass 已经在读取这两个表，表结构不变可无缝切换
+- 避免数据迁移
 
-### D4: pipeline 下线时机
+## 数据流
 
-**选择**: analysis 全量完成 + StockShark daemon 验证通过后，再下线 pipeline
-**理由**: 数据完整性优先，宁可多跑一段时间也不丢数据
+```
+                     ┌─────────────────────┐
+                     │   APScheduler       │
+                     │  (Flask 内置)        │
+                     └─────────┬───────────┘
+                               │ cron 15:30
+                               ▼
+                     ┌─────────────────────┐
+                     │ tracked_stock 表    │
+                     │ (采集股票列表)       │
+                     └─────────┬───────────┘
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │      KLineCollector             │
+              │  1. 查询 stock_data_daily 最新日│
+              │  2. 东财采集 → Sina 降级         │
+              │  3. 写入 stock_data_daily        │
+              └────────────────┬───────────────┘
+                               │ cron 15:45
+                               ▼
+              ┌────────────────────────────────┐
+              │    IndicatorCalculator          │
+              │  1. 读取 K 线数据               │
+              │  2. pandas-ta 计算 MA/MACD/KDJ  │
+              │  3. 写入 indicators_daily        │
+              └────────────────┬───────────────┘
+                               │
+                               ▼
+              ┌────────────────────────────────┐
+              │    Pipeline API Routes          │
+              │  /pipeline/kline                │
+              │  /pipeline/indicators            │
+              │  /pipeline/stock-data            │
+              │  /pipeline/collect (手动触发)    │
+              │  /pipeline/status                │
+              └────────────────────────────────┘
+                               │
+                               ▼
+                      外部消费者 (compass)
+```
 
-### D5: 不做 analysis 融合
+## 需要新增的文件
 
-**选择**: analysis（buy_advice_v2）留在 compass，不迁移到 StockShark
-**理由**: analysis 依赖 compass 的 funcat/buy 模块，import 链复杂且有 dicStock 陷阱。StockShark 只负责数据采集+指标计算，analysis 由 compass 调用
+| 文件路径 | 职责 |
+|---------|------|
+| `stockshark/pipeline/__init__.py` | pipeline 包初始化 |
+| `stockshark/pipeline/kline_fetcher.py` | K 线数据源抽象（东财 + Sina） |
+| `stockshark/pipeline/kline_collector.py` | K 线增量采集（读取关注列表、降级逻辑） |
+| `stockshark/pipeline/indicator_calculator.py` | 技术指标计算（MA/MACD/KDJ/RSI/BOLL） |
+| `stockshark/pipeline/daemon.py` | APScheduler daemon 管理 |
+| `stockshark/pipeline/tables.py` | stock_data_daily / indicators_daily 建表和 DAO |
+| `stockshark/api/routes/pipeline.py` | pipeline 相关 API 路由 |
 
-## Risks / Trade-offs
+## 需要修改的文件
 
-- **[风险] StockShark import 链** → crawler 模块安全，但集成新模块时需验证 import 路径
-- **[风险] 切换期间数据重复** → Phase 3 切换时确保 pipeline 完全停止后再启动 StockShark daemon
-- **[取舍] analysis 不融合** → compass 仍需依赖 pipeline 数据表，但 StockShark daemon 写同一张表，无影响
+| 文件路径 | 修改内容 |
+|---------|---------|
+| `stockshark/api/app.py` | 注册 pipeline_bp blueprint；create_app 中初始化 daemon |
+| `stockshark/config.py` | 新增 DAEMON_ENABLED、COLLECT_CRON_HOUR/MINUTE 等配置项 |
+| `requirements.txt` | 新增 `apscheduler`、`pandas-ta` 依赖 |
+| `pyproject.toml` | 同步新增依赖 |
+
+## 不修改的文件
+
+- `stockshark/data/` 下现有文件 — 保持东财采集能力不变
+- `stockshark/analysis/` — LLM 分析逻辑不变
+- `stockshark/web/templates/` — 无前端变更
+- 现有 API 路由 — 不破坏现有接口

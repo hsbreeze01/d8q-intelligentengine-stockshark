@@ -27,6 +27,13 @@ class Config:
     CACHE_TYPE = 'simple'
     CACHE_DEFAULT_TIMEOUT = 300
 
+    # Pipeline / Daemon 配置
+    DAEMON_ENABLED = os.environ.get('DAEMON_ENABLED', 'False') == 'True'
+    COLLECT_CRON_HOUR = int(os.environ.get('COLLECT_CRON_HOUR', 15))
+    COLLECT_CRON_MINUTE = int(os.environ.get('COLLECT_CRON_MINUTE', 30))
+    INDICATOR_CRON_OFFSET_MINUTES = int(os.environ.get('INDICATOR_CRON_OFFSET_MINUTES', 15))
+    INITIAL_KLINE_DAYS = int(os.environ.get('INITIAL_KLINE_DAYS', 120))
+
 
 class DevelopmentConfig(Config):
     """开发环境配置"""

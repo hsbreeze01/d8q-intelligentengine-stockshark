@@ -93,8 +93,20 @@ def test_get_by_id_not_found(mock_get_conn, svc):
 def test_add_success(mock_get_conn, svc):
     new_row = {"id": 1, "stock_code": "603009", "stock_name": "北特科技",
                "group_name": "科技", "sort_order": 1, "notes": "关注中"}
-    conn, cursor = _mock_conn(fetchone_result=new_row, lastrowid=1)
-    mock_get_conn.return_value = conn
+    fetchone_results = [
+        None,      # _is_duplicate: not found
+        new_row,   # final SELECT after INSERT
+    ]
+    call_count = 0
+
+    def make_conn():
+        nonlocal call_count
+        result = fetchone_results[call_count] if call_count < len(fetchone_results) else None
+        call_count += 1
+        conn, cursor = _mock_conn(fetchone_result=result, lastrowid=1)
+        return conn
+
+    mock_get_conn.side_effect = lambda: make_conn()
 
     result = svc.add("603009", "北特科技", "科技", 1, "关注中")
     assert result["stock_code"] == "603009"
@@ -229,20 +241,21 @@ def test_delete_not_found(mock_get_conn, svc):
 @patch("stockshark.services.tracked_stock_service.get_mysql_connection")
 def test_batch_add_mixed(mock_get_conn, svc):
     """测试批量添加：有新增有跳过"""
-    added_count = 0
-    skipped_via_duplicate = False
+    # Queue of (fetchone_result, lastrowid) tuples, one per get_mysql_connection() call
+    # Order: 000001 duplicate check, then 3 calls per new stock (dup check, auto-fill, insert+select)
+    queue = [
+        ({"id": 1}, 1),                                                    # 1: 000001 _is_duplicate → duplicate
+        (None, 2),                                                         # 2: 000002 _is_duplicate → not found
+        (None, 2),                                                         # 3: 000002 _auto_fill_stock_name → not found
+        ({"id": 2, "stock_code": "000002", "stock_name": "000002"}, 2),   # 4: 000002 INSERT + SELECT
+        (None, 3),                                                         # 5: 603009 _is_duplicate → not found
+        (None, 3),                                                         # 6: 603009 _auto_fill_stock_name → not found
+        ({"id": 3, "stock_code": "603009", "stock_name": "603009"}, 3),   # 7: 603009 INSERT + SELECT
+    ]
 
     def make_conn():
-        nonlocal added_count, skipped_via_duplicate
-        # Each call to add() will open a new connection
-        # For the duplicate check (first add for 000001):
-        if not skipped_via_duplicate:
-            skipped_via_duplicate = True
-            conn, _ = _mock_conn(fetchone_result={"id": 1})  # duplicate
-            return conn
-        added_count += 1
-        new_row = {"id": added_count + 1, "stock_code": "new", "stock_name": "new"}
-        conn, _ = _mock_conn(fetchone_result=new_row, lastrowid=added_count + 1)
+        fetchone_result, lastrowid = queue.pop(0)
+        conn, _ = _mock_conn(fetchone_result=fetchone_result, lastrowid=lastrowid)
         return conn
 
     mock_get_conn.side_effect = lambda: make_conn()

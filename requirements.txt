@@ -13,3 +13,5 @@ requests
 scikit-learn
 matplotlib
 seaborn
+apscheduler>=3.10.0
+pandas-ta>=0.3.14
