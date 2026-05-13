@@ -111,32 +111,20 @@ class KLineCollector:
     # ------------------------------------------------------------------
 
     def _fetch_with_fallback(self, stock_code, start_date, end_date):
-        """
-        先东财，失败则降级 Sina。
-
-        Returns:
-            pd.DataFrame 或 None
-        """
+        """Sina 优先，东财降级"""
         try:
-            df = self.em_fetcher.fetch(stock_code, start_date, end_date)
+            df = self.sina_fetcher.fetch(stock_code, start_date, end_date)
             if df is not None and not df.empty:
                 return df
-        except Exception as em_err:
-            logger.warning(
-                "东财采集 %s 失败，尝试 Sina 降级: %s", stock_code, em_err
-            )
+        except Exception as sina_err:
+            logger.warning("Sina 采集 %s 失败，尝试东财降级: %s", stock_code, sina_err)
             try:
-                df = self.sina_fetcher.fetch(stock_code, start_date, end_date)
+                df = self.em_fetcher.fetch(stock_code, start_date, end_date)
                 if df is not None and not df.empty:
-                    logger.warning("已降级到 Sina 数据源采集 %s", stock_code)
                     return df
-            except Exception as sina_err:
-                logger.error(
-                    "Sina 采集 %s 也失败: %s", stock_code, sina_err
-                )
-                raise RuntimeError(
-                    f"东财失败: {em_err}; Sina 失败: {sina_err}"
-                )
+            except Exception as em_err:
+                logger.error("东财采集 %s 也失败: %s", stock_code, em_err)
+                raise RuntimeError(f"Sina 失败: {sina_err}; 东财失败: {em_err}")
         return None
 
     # ------------------------------------------------------------------
