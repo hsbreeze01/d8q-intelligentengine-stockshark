@@ -37,8 +37,11 @@ class IndicatorCalculator:
                 }
 
             df = pd.DataFrame(klines)
-            df["trade_date"] = pd.to_datetime(df["trade_date"])
-            df = df.sort_values("trade_date").reset_index(drop=True)
+            df["date"] = pd.to_datetime(df["date"])
+            for col in ["open", "high", "low", "close", "volume"]:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors="coerce")
+            df = df.sort_values("date").reset_index(drop=True)
 
             # 确定已计算到的最新日期
             latest_indicator = tables.query_latest_indicator_date(stock_code)
@@ -58,7 +61,7 @@ class IndicatorCalculator:
             if latest_indicator is not None:
                 latest_ts = pd.Timestamp(latest_indicator)
                 indicators_df = indicators_df[
-                    indicators_df["trade_date"] > latest_ts
+                    indicators_df["date"] > latest_ts
                 ]
 
             if indicators_df.empty:
@@ -124,14 +127,14 @@ class IndicatorCalculator:
         数据不足时降级（跳过需要长窗口的指标）。
 
         Args:
-            df: DataFrame, 必须有 trade_date, close, high, low, volume
+            df: DataFrame, 必须有 date, close, high, low, volume
 
         Returns:
             DataFrame with indicator columns, 或 None
         """
         n = len(df)
         result = pd.DataFrame()
-        result["trade_date"] = df["trade_date"]
+        result["date"] = df["date"]
         result["stock_code"] = df.get("stock_code", "")
         result["close"] = df["close"]
 
@@ -154,7 +157,7 @@ class IndicatorCalculator:
             logger.warning("MACD 计算失败: %s", e)
             result["macd_dif"] = None
             result["macd_dea"] = None
-            result["macd_bar"] = None
+            result["macd_macd"] = None
 
         # KDJ
         try:
@@ -180,14 +183,14 @@ class IndicatorCalculator:
                 result = pd.concat([result, boll_df], axis=1)
             except Exception as e:
                 logger.warning("BOLL 计算失败: %s", e)
-                result["boll_upper"] = None
-                result["boll_middle"] = None
-                result["boll_lower"] = None
+                result["boll_up"] = None
+                result["boll_mid"] = None
+                result["boll_low"] = None
         else:
             skipped.append("BOLL")
-            result["boll_upper"] = None
-            result["boll_middle"] = None
-            result["boll_lower"] = None
+            result["boll_up"] = None
+            result["boll_mid"] = None
+            result["boll_low"] = None
 
         if skipped:
             logger.warning(
@@ -210,7 +213,7 @@ class IndicatorCalculator:
         return pd.DataFrame({
             "macd_dif": dif,
             "macd_dea": dea,
-            "macd_bar": bar,
+            "macd_macd": bar,
         })
 
     @staticmethod
@@ -245,9 +248,9 @@ class IndicatorCalculator:
         upper = middle + std_dev * std
         lower = middle - std_dev * std
         return pd.DataFrame({
-            "boll_upper": upper,
-            "boll_middle": middle,
-            "boll_lower": lower,
+            "boll_up": upper,
+            "boll_mid": middle,
+            "boll_low": lower,
         })
 
     # ------------------------------------------------------------------
@@ -272,10 +275,10 @@ class IndicatorCalculator:
         for _, r in df.iterrows():
             rows.append({
                 "stock_code": stock_code,
-                "trade_date": (
-                    r["trade_date"].date()
-                    if hasattr(r["trade_date"], "date")
-                    else r["trade_date"]
+                "date": (
+                    r["date"].date()
+                    if hasattr(r["date"], "date")
+                    else r["date"]
                 ),
                 "ma5": _safe(r.get("ma5")),
                 "ma10": _safe(r.get("ma10")),
@@ -283,16 +286,16 @@ class IndicatorCalculator:
                 "ma60": _safe(r.get("ma60")),
                 "macd_dif": _safe(r.get("macd_dif")),
                 "macd_dea": _safe(r.get("macd_dea")),
-                "macd_bar": _safe(r.get("macd_bar")),
+                "macd_macd": _safe(r.get("macd_macd")),
                 "kdj_k": _safe(r.get("kdj_k")),
                 "kdj_d": _safe(r.get("kdj_d")),
                 "kdj_j": _safe(r.get("kdj_j")),
-                "rsi6": _safe(r.get("rsi6")),
-                "rsi12": _safe(r.get("rsi12")),
-                "rsi24": _safe(r.get("rsi24")),
-                "boll_upper": _safe(r.get("boll_upper")),
-                "boll_middle": _safe(r.get("boll_middle")),
-                "boll_lower": _safe(r.get("boll_lower")),
+                "rsi_6": _safe(r.get("rsi_6")),
+                "rsi_12": _safe(r.get("rsi_12")),
+                "rsi_24": _safe(r.get("rsi_24")),
+                "boll_up": _safe(r.get("boll_up")),
+                "boll_mid": _safe(r.get("boll_mid")),
+                "boll_low": _safe(r.get("boll_low")),
             })
         return rows
 

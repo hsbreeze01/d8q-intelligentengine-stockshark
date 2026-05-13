@@ -89,15 +89,15 @@ def get_stock_data():
         stock_code, limit=int(limit) if limit else None
     )
 
-    # 以 trade_date 为 key 合并
+    # 以 date 为 key 合并
     ind_map = {}
     for row in indicators:
-        td = str(row["trade_date"])
+        td = str(row["date"])
         ind_map[td] = row
 
     data = []
     for krow in klines:
-        td = str(krow["trade_date"])
+        td = str(krow["date"])
         item = _row_to_dict(krow)
         ind = ind_map.get(td, {})
         item.update({
@@ -164,7 +164,7 @@ def get_status():
 
 def _row_to_dict(row):
     return {
-        "trade_date": str(row["trade_date"]),
+        "date": str(row["date"]),
         "open": _to_float(row.get("open")),
         "high": _to_float(row.get("high")),
         "low": _to_float(row.get("low")),
@@ -175,7 +175,7 @@ def _row_to_dict(row):
 
 def _indicator_row_to_dict(row):
     return {
-        "trade_date": str(row["trade_date"]),
+        "date": str(row["date"]),
         "ma5": _to_float(row.get("ma5")),
         "ma10": _to_float(row.get("ma10")),
         "ma20": _to_float(row.get("ma20")),

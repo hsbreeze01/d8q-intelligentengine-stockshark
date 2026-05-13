@@ -160,13 +160,13 @@ class KLineCollector:
         for _, r in df.iterrows():
             rows.append({
                 "stock_code": stock_code,
-                "trade_date": r["date"].date() if hasattr(r["date"], "date") else r["date"],
+                "date": r["date"].date() if hasattr(r["date"], "date") else r["date"],
                 "open": float(r["open"]) if _not_nan(r.get("open")) else None,
                 "high": float(r["high"]) if _not_nan(r.get("high")) else None,
                 "low": float(r["low"]) if _not_nan(r.get("low")) else None,
                 "close": float(r["close"]) if _not_nan(r.get("close")) else None,
                 "volume": int(r["volume"]) if _not_nan(r.get("volume")) else None,
-                "amount": None,
+                "turnover": None,
             })
         return rows
 
