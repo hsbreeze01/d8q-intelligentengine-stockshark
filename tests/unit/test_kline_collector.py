@@ -2,7 +2,7 @@
 
 import pytest
 import pandas as pd
-from datetime import date, datetime
+from datetime import date
 from unittest.mock import patch, MagicMock
 
 from stockshark.pipeline.kline_collector import KLineCollector

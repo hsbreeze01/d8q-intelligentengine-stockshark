@@ -1,6 +1,5 @@
 """IndicatorCalculator 单元测试 — mock DB, 测试计算逻辑"""
 
-import pytest
 import pandas as pd
 import numpy as np
 from datetime import date, timedelta

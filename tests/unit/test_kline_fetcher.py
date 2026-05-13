@@ -2,7 +2,7 @@
 
 import pytest
 import pandas as pd
-from unittest.mock import patch, MagicMock
+from unittest.mock import patch
 
 from stockshark.pipeline.kline_fetcher import (
     AkshareEastmoneyFetcher,
