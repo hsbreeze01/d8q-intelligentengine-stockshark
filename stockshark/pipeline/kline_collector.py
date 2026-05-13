@@ -144,11 +144,15 @@ class KLineCollector:
     # ------------------------------------------------------------------
 
     def _get_tracked_codes(self):
-        """从 tracked_stock 表获取全部 stock_code"""
+        """从 stock_basic 表获取全部股票代码（兼容 tracked_stock）"""
         conn = get_mysql_connection()
         try:
             cursor = conn.cursor()
             cursor.execute("SELECT stock_code FROM tracked_stock")
+            codes = [row["stock_code"] for row in cursor.fetchall()]
+            if codes:
+                return codes
+            cursor.execute("SELECT code AS stock_code FROM stock_basic ORDER BY code")
             return [row["stock_code"] for row in cursor.fetchall()]
         finally:
             conn.close()
