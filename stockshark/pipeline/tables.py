@@ -20,7 +20,11 @@ CREATE TABLE IF NOT EXISTS stock_data_daily (
     low       DECIMAL(10,3) DEFAULT NULL COMMENT '最低价',
     `close`   DECIMAL(10,3) DEFAULT NULL COMMENT '收盘价',
     volume    BIGINT        DEFAULT NULL COMMENT '成交量',
-    amount    DECIMAL(20,3) DEFAULT NULL COMMENT '成交额',
+    turnover  DECIMAL(20,3) DEFAULT NULL COMMENT '成交额',
+    amplitude DECIMAL(10,4) DEFAULT NULL COMMENT '振幅',
+    change_percentage DECIMAL(10,4) DEFAULT NULL COMMENT '涨跌幅',
+    change_amount DECIMAL(10,4) DEFAULT NULL COMMENT '涨跌额',
+    turnover_rate DECIMAL(10,4) DEFAULT NULL COMMENT '换手率',
     created_at TIMESTAMP    DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_code_date (stock_code, date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='日K线数据表'
@@ -48,6 +52,10 @@ CREATE TABLE IF NOT EXISTS indicators_daily (
     boll_up   DECIMAL(10,3) DEFAULT NULL,
     boll_mid  DECIMAL(10,3) DEFAULT NULL,
     boll_low   DECIMAL(10,3) DEFAULT NULL,
+    volume_ratio DECIMAL(10,4) DEFAULT NULL,
+    amplitude DECIMAL(10,4) DEFAULT NULL,
+    change_pct DECIMAL(10,4) DEFAULT NULL,
+    turnover_rate DECIMAL(10,4) DEFAULT NULL,
     created_at   TIMESTAMP     DEFAULT CURRENT_TIMESTAMP,
     UNIQUE KEY uk_code_date (stock_code, date)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4 COMMENT='技术指标日表'
@@ -76,7 +84,7 @@ def upsert_kline_rows(rows):
 
     Args:
         rows: list of dict, 每个包含
-              stock_code, date, open, high, low, close, volume, amount
+              stock_code, date, open, high, low, close, volume, turnover
     """
     if not rows:
         return
@@ -85,17 +93,22 @@ def upsert_kline_rows(rows):
         cursor = conn.cursor()
         sql = """
         INSERT INTO stock_data_daily
-            (stock_code, date, `open`, high, low, `close`, volume, turnover)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
+            (stock_code, date, `open`, high, low, `close`, volume, turnover,
+             amplitude, change_percentage, change_amount, turnover_rate)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         ON DUPLICATE KEY UPDATE
             `open`=VALUES(`open`), high=VALUES(high), low=VALUES(low),
-            `close`=VALUES(`close`), volume=VALUES(volume), turnover=VALUES(turnover)
+            `close`=VALUES(`close`), volume=VALUES(volume), turnover=VALUES(turnover),
+            amplitude=VALUES(amplitude), change_percentage=VALUES(change_percentage),
+            change_amount=VALUES(change_amount), turnover_rate=VALUES(turnover_rate)
         """
         params = [
             (
                 r["stock_code"], r["date"],
                 r.get("open"), r.get("high"), r.get("low"), r.get("close"),
                 r.get("volume"), r.get("turnover"),
+                r.get("amplitude"), r.get("change_percentage"),
+                r.get("change_amount"), r.get("turnover_rate"),
             )
             for r in rows
         ]
@@ -166,7 +179,10 @@ def query_kline_range(stock_code, start_date=None, end_date=None, limit=None):
 
 def upsert_indicator_rows(rows):
     """
-    批量写入指标数据（ON DUPLICATE KEY UPDATE）
+    批量写入指标数据。
+
+    线上历史表可能缺少 (stock_code, date) 唯一键，因此不能只依赖
+    ON DUPLICATE KEY UPDATE；有同日记录时更新最新 id，避免继续制造重复行。
 
     Args:
         rows: list of dict
@@ -176,35 +192,51 @@ def upsert_indicator_rows(rows):
     conn = get_mysql_connection()
     try:
         cursor = conn.cursor()
-        sql = """
+        insert_sql = """
         INSERT INTO indicators_daily
             (stock_code, date,
              ma5, ma10, ma20, ma30, ma60,
              macd_dif, macd_dea, macd_macd,
              kdj_k, kdj_d, kdj_j,
              rsi_6, rsi_12, rsi_24,
-             boll_up, boll_mid, boll_low)
-        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
-        ON DUPLICATE KEY UPDATE
-            ma5=VALUES(ma5), ma10=VALUES(ma10), ma20=VALUES(ma20), ma30=VALUES(ma30), ma60=VALUES(ma60),
-            macd_dif=VALUES(macd_dif), macd_dea=VALUES(macd_dea), macd_macd=VALUES(macd_macd),
-            kdj_k=VALUES(kdj_k), kdj_d=VALUES(kdj_d), kdj_j=VALUES(kdj_j),
-            rsi_6=VALUES(rsi_6), rsi_12=VALUES(rsi_12), rsi_24=VALUES(rsi_24),
-            boll_up=VALUES(boll_up), boll_mid=VALUES(boll_mid),
-            boll_low=VALUES(boll_low)
+             boll_up, boll_mid, boll_low,
+             volume_ratio, amplitude, change_pct, turnover_rate)
+        VALUES (%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s,%s)
         """
-        params = [
-            (
+        update_sql = """
+        UPDATE indicators_daily
+        SET ma5=%s, ma10=%s, ma20=%s, ma30=%s, ma60=%s,
+            macd_dif=%s, macd_dea=%s, macd_macd=%s,
+            kdj_k=%s, kdj_d=%s, kdj_j=%s,
+            rsi_6=%s, rsi_12=%s, rsi_24=%s,
+            boll_up=%s, boll_mid=%s, boll_low=%s,
+            volume_ratio=%s, amplitude=%s, change_pct=%s, turnover_rate=%s
+        WHERE id=%s
+        """
+        find_sql = """
+        SELECT id
+        FROM indicators_daily
+        WHERE stock_code=%s AND date=%s
+        ORDER BY id DESC
+        LIMIT 1
+        """
+        for r in rows:
+            insert_params = (
                 r["stock_code"], r["date"],
                 r.get("ma5"), r.get("ma10"), r.get("ma20"), r.get("ma30"), r.get("ma60"),
                 r.get("macd_dif"), r.get("macd_dea"), r.get("macd_macd"),
                 r.get("kdj_k"), r.get("kdj_d"), r.get("kdj_j"),
                 r.get("rsi_6"), r.get("rsi_12"), r.get("rsi_24"),
                 r.get("boll_up"), r.get("boll_mid"), r.get("boll_low"),
+                r.get("volume_ratio"), r.get("amplitude"),
+                r.get("change_pct"), r.get("turnover_rate"),
             )
-            for r in rows
-        ]
-        cursor.executemany(sql, params)
+            cursor.execute(find_sql, (r["stock_code"], r["date"]))
+            existing = cursor.fetchone()
+            if existing:
+                cursor.execute(update_sql, (*insert_params[2:], existing["id"]))
+            else:
+                cursor.execute(insert_sql, insert_params)
         conn.commit()
     finally:
         conn.close()
@@ -260,9 +292,16 @@ def query_kline_for_calc(stock_code, limit=120):
     try:
         cursor = conn.cursor()
         cursor.execute(
-            "SELECT stock_code, date, `open`, high, low, `close`, volume "
-            "FROM stock_data_daily WHERE stock_code = %s "
-            "ORDER BY date ASC LIMIT %s",
+            "SELECT stock_code, date, `open`, high, low, `close`, volume, "
+            "amplitude, change_percentage, turnover_rate "
+            "FROM stock_data_daily "
+            "WHERE id IN ("
+            "  SELECT id FROM ("
+            "    SELECT MAX(id) AS id FROM stock_data_daily "
+            "    WHERE stock_code = %s GROUP BY date "
+            "    ORDER BY date DESC LIMIT %s"
+            "  ) latest_ids"
+            ") ORDER BY date ASC",
             (stock_code, limit),
         )
         return cursor.fetchall()

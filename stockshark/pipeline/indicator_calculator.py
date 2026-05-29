@@ -13,12 +13,13 @@ MIN_ROWS_FOR_FULL = 65
 class IndicatorCalculator:
     """技术指标计算器"""
 
-    def calculate_one(self, stock_code):
+    def calculate_one(self, stock_code, force_recalculate=False):
         """
         对单只股票执行增量指标计算。
 
         策略：读取最近 ~120 条 K 线（用于提供足够的窗口），
-        但只将 indicators_daily 中不存在的日期行写入。
+        默认只将 indicators_daily 中不存在的日期行写入；
+        force_recalculate=True 时重算最近窗口并通过 upsert 回填已有行。
 
         Returns:
             dict: {"stock_code": str, "success": bool,
@@ -38,7 +39,10 @@ class IndicatorCalculator:
 
             df = pd.DataFrame(klines)
             df["date"] = pd.to_datetime(df["date"])
-            for col in ["open", "high", "low", "close", "volume"]:
+            for col in [
+                "open", "high", "low", "close", "volume",
+                "amplitude", "change_percentage", "turnover_rate",
+            ]:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors="coerce")
             df = df.sort_values("date").reset_index(drop=True)
@@ -58,7 +62,7 @@ class IndicatorCalculator:
                 }
 
             # 增量过滤：只保留 latest_indicator 之后的新日期
-            if latest_indicator is not None:
+            if latest_indicator is not None and not force_recalculate:
                 latest_ts = pd.Timestamp(latest_indicator)
                 indicators_df = indicators_df[
                     indicators_df["date"] > latest_ts
@@ -90,7 +94,7 @@ class IndicatorCalculator:
                 "error": str(e),
             }
 
-    def calculate_all(self):
+    def calculate_all(self, force_recalculate=False):
         """
         对 tracked_stock 全部股票执行增量指标计算。
 
@@ -104,7 +108,7 @@ class IndicatorCalculator:
         failed_codes = []
 
         for code in codes:
-            result = self.calculate_one(code)
+            result = self.calculate_one(code, force_recalculate=force_recalculate)
             if result["success"]:
                 success += 1
             else:
@@ -141,7 +145,7 @@ class IndicatorCalculator:
         skipped = []
 
         # MA
-        for period in [5, 10, 20, 60]:
+        for period in [5, 10, 20, 30, 60]:
             if n >= period:
                 result[f"ma{period}"] = df["close"].rolling(window=period).mean()
             else:
@@ -172,9 +176,27 @@ class IndicatorCalculator:
         # RSI
         for period in [6, 12, 24]:
             try:
-                result[f"rsi{period}"] = self._calc_rsi(df["close"], period)
+                result[f"rsi_{period}"] = self._calc_rsi(df["close"], period)
             except Exception:
-                result[f"rsi{period}"] = None
+                result[f"rsi_{period}"] = None
+
+        # stock2 策略依赖的行情派生字段。
+        # volume_ratio 使用前 5 日均量作为基准，避免把当日成交量纳入分母。
+        prev_close = df["close"].shift(1)
+        prev_volume_avg = df["volume"].shift(1).rolling(window=5).mean()
+        result["volume_ratio"] = df["volume"] / prev_volume_avg
+        if "amplitude" in df.columns:
+            result["amplitude"] = df["amplitude"]
+        else:
+            result["amplitude"] = (df["high"] - df["low"]) / prev_close * 100
+        if "change_percentage" in df.columns:
+            result["change_pct"] = df["change_percentage"]
+        else:
+            result["change_pct"] = df["close"].pct_change() * 100
+        if "turnover_rate" in df.columns:
+            result["turnover_rate"] = df["turnover_rate"]
+        else:
+            result["turnover_rate"] = None
 
         # BOLL
         if n >= 20:
@@ -287,6 +309,7 @@ class IndicatorCalculator:
                 "ma5": _safe(r.get("ma5")),
                 "ma10": _safe(r.get("ma10")),
                 "ma20": _safe(r.get("ma20")),
+                "ma30": _safe(r.get("ma30")),
                 "ma60": _safe(r.get("ma60")),
                 "macd_dif": _safe(r.get("macd_dif")),
                 "macd_dea": _safe(r.get("macd_dea")),
@@ -300,6 +323,10 @@ class IndicatorCalculator:
                 "boll_up": _safe(r.get("boll_up")),
                 "boll_mid": _safe(r.get("boll_mid")),
                 "boll_low": _safe(r.get("boll_low")),
+                "volume_ratio": _safe(r.get("volume_ratio")),
+                "amplitude": _safe(r.get("amplitude")),
+                "change_pct": _safe(r.get("change_pct")),
+                "turnover_rate": _safe(r.get("turnover_rate")),
             })
         return rows
 

@@ -92,31 +92,36 @@ def get_stock_data():
     # 以 date 为 key 合并
     ind_map = {}
     for row in indicators:
-        td = str(row["date"])
+        td = str(_get_row_date(row))
         ind_map[td] = row
 
     data = []
     for krow in klines:
-        td = str(krow["date"])
+        td = str(_get_row_date(krow))
         item = _row_to_dict(krow)
         ind = ind_map.get(td, {})
         item.update({
             "ma5": _to_float(ind.get("ma5")),
             "ma10": _to_float(ind.get("ma10")),
             "ma20": _to_float(ind.get("ma20")),
+            "ma30": _to_float(ind.get("ma30")),
             "ma60": _to_float(ind.get("ma60")),
             "macd_dif": _to_float(ind.get("macd_dif")),
             "macd_dea": _to_float(ind.get("macd_dea")),
-            "macd_bar": _to_float(ind.get("macd_bar")),
+            "macd_bar": _to_float(ind.get("macd_bar", ind.get("macd_macd"))),
             "kdj_k": _to_float(ind.get("kdj_k")),
             "kdj_d": _to_float(ind.get("kdj_d")),
             "kdj_j": _to_float(ind.get("kdj_j")),
-            "rsi6": _to_float(ind.get("rsi_6")),
-            "rsi12": _to_float(ind.get("rsi_12")),
-            "rsi24": _to_float(ind.get("rsi_24")),
-            "boll_upper": _to_float(ind.get("boll_up")),
-            "boll_middle": _to_float(ind.get("boll_mid")),
-            "boll_lower": _to_float(ind.get("boll_low")),
+            "rsi6": _to_float(ind.get("rsi_6", ind.get("rsi6"))),
+            "rsi12": _to_float(ind.get("rsi_12", ind.get("rsi12"))),
+            "rsi24": _to_float(ind.get("rsi_24", ind.get("rsi24"))),
+            "boll_upper": _to_float(ind.get("boll_up", ind.get("boll_upper"))),
+            "boll_middle": _to_float(ind.get("boll_mid", ind.get("boll_middle"))),
+            "boll_lower": _to_float(ind.get("boll_low", ind.get("boll_lower"))),
+            "volume_ratio": _to_float(ind.get("volume_ratio")),
+            "amplitude": _to_float(ind.get("amplitude")),
+            "change_pct": _to_float(ind.get("change_pct")),
+            "turnover_rate": _to_float(ind.get("turnover_rate")),
         })
         data.append(item)
 
@@ -163,36 +168,53 @@ def get_status():
 
 
 def _row_to_dict(row):
+    trade_date = _get_row_date(row)
     return {
-        "date": str(row["date"]),
+        "trade_date": str(trade_date),
+        "date": str(trade_date),
         "open": _to_float(row.get("open")),
         "high": _to_float(row.get("high")),
         "low": _to_float(row.get("low")),
         "close": _to_float(row.get("close")),
         "volume": _to_int(row.get("volume")),
+        "turnover": _to_float(row.get("turnover")),
+        "amplitude": _to_float(row.get("amplitude")),
+        "change_percentage": _to_float(row.get("change_percentage")),
+        "turnover_rate": _to_float(row.get("turnover_rate")),
     }
 
 
 def _indicator_row_to_dict(row):
+    trade_date = _get_row_date(row)
     return {
-        "date": str(row["date"]),
+        "trade_date": str(trade_date),
+        "date": str(trade_date),
         "ma5": _to_float(row.get("ma5")),
         "ma10": _to_float(row.get("ma10")),
         "ma20": _to_float(row.get("ma20")),
+        "ma30": _to_float(row.get("ma30")),
         "ma60": _to_float(row.get("ma60")),
         "macd_dif": _to_float(row.get("macd_dif")),
         "macd_dea": _to_float(row.get("macd_dea")),
-        "macd_bar": _to_float(row.get("macd_bar")),
+        "macd_bar": _to_float(row.get("macd_bar", row.get("macd_macd"))),
         "kdj_k": _to_float(row.get("kdj_k")),
         "kdj_d": _to_float(row.get("kdj_d")),
         "kdj_j": _to_float(row.get("kdj_j")),
-        "rsi6": _to_float(row.get("rsi_6")),
-        "rsi12": _to_float(row.get("rsi_12")),
-        "rsi24": _to_float(row.get("rsi_24")),
-        "boll_upper": _to_float(row.get("boll_up")),
-        "boll_middle": _to_float(row.get("boll_mid")),
-        "boll_lower": _to_float(row.get("boll_low")),
+        "rsi6": _to_float(row.get("rsi_6", row.get("rsi6"))),
+        "rsi12": _to_float(row.get("rsi_12", row.get("rsi12"))),
+        "rsi24": _to_float(row.get("rsi_24", row.get("rsi24"))),
+        "boll_upper": _to_float(row.get("boll_up", row.get("boll_upper"))),
+        "boll_middle": _to_float(row.get("boll_mid", row.get("boll_middle"))),
+        "boll_lower": _to_float(row.get("boll_low", row.get("boll_lower"))),
+        "volume_ratio": _to_float(row.get("volume_ratio")),
+        "amplitude": _to_float(row.get("amplitude")),
+        "change_pct": _to_float(row.get("change_pct")),
+        "turnover_rate": _to_float(row.get("turnover_rate")),
     }
+
+
+def _get_row_date(row):
+    return row.get("date", row.get("trade_date"))
 
 
 def _to_float(val):

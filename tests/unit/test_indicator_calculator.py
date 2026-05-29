@@ -21,7 +21,7 @@ def _make_kline_df(n=60):
         d = date(2025, 1, 1) + timedelta(days=i)
         rows.append({
             "stock_code": "600000",
-            "trade_date": d,
+            "date": d,
             "open": base_price + i * 0.1,
             "high": base_price + i * 0.1 + 0.5,
             "low": base_price + i * 0.1 - 0.3,
@@ -65,6 +65,9 @@ class TestCalculateOneFull:
         rows = mock_tables.upsert_indicator_rows.call_args[0][0]
         # 至少应有 MA5、MACD 等非 None 值
         assert any(r["ma5"] is not None for r in rows)
+        assert any(r["ma30"] is not None for r in rows)
+        assert any(r["rsi_6"] is not None for r in rows)
+        assert any(r["volume_ratio"] is not None for r in rows)
 
     @patch("stockshark.pipeline.indicator_calculator.tables")
     def test_no_kline_data(self, mock_tables):
@@ -127,7 +130,23 @@ class TestIncrementalCalculation:
         rows = mock_tables.upsert_indicator_rows.call_args[0][0]
         # 所有写入的行日期应大于 existing_latest
         for r in rows:
-            assert r["trade_date"] > existing_latest
+            assert r["date"] > existing_latest
+
+    @patch("stockshark.pipeline.indicator_calculator.tables")
+    def test_force_recalculate_updates_existing_window(self, mock_tables):
+        """强制重算：已有日期也通过 upsert 回填"""
+        klines = _make_kline_df(65)
+        mock_tables.query_kline_for_calc.return_value = klines
+        mock_tables.query_latest_indicator_date.return_value = date(2025, 2, 20)
+        mock_tables.upsert_indicator_rows = MagicMock()
+
+        calc = IndicatorCalculator()
+        result = calc.calculate_one("600000", force_recalculate=True)
+
+        assert result["success"] is True
+        rows = mock_tables.upsert_indicator_rows.call_args[0][0]
+        assert any(r["date"] <= date(2025, 2, 20) for r in rows)
+        assert any(r["volume_ratio"] is not None for r in rows)
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +163,7 @@ class TestComputeMethods:
         assert len(result) == 50
         assert "macd_dif" in result.columns
         assert "macd_dea" in result.columns
-        assert "macd_bar" in result.columns
+        assert "macd_macd" in result.columns
 
     def test_kdj_shape(self):
         """KDJ 返回正确形状"""
@@ -168,6 +187,6 @@ class TestComputeMethods:
         close = pd.Series(np.random.randn(30).cumsum() + 100)
         result = IndicatorCalculator._calc_boll(close)
         assert len(result) == 30
-        assert "boll_upper" in result.columns
-        assert "boll_middle" in result.columns
-        assert "boll_lower" in result.columns
+        assert "boll_up" in result.columns
+        assert "boll_mid" in result.columns
+        assert "boll_low" in result.columns
