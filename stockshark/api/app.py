@@ -12,6 +12,7 @@ from stockshark.api.routes.prompts import prompts_bp
 from stockshark.api.routes.health import health_bp
 from stockshark.api.routes.tracked_stocks import tracked_stocks_bp
 from stockshark.api.routes.pipeline import pipeline_bp
+from stockshark.api.routes.backtest import backtest_bp
 
 
 def create_app(config=None):
@@ -47,6 +48,7 @@ def create_app(config=None):
     app.register_blueprint(health_bp, url_prefix=f'{Config.API_PREFIX}/health')
     app.register_blueprint(tracked_stocks_bp, url_prefix=f'{Config.API_PREFIX}/tracked-stocks')
     app.register_blueprint(pipeline_bp, url_prefix=f'{Config.API_PREFIX}/v1/pipeline')
+    app.register_blueprint(backtest_bp, url_prefix=f'{Config.API_PREFIX}/backtest')
     
     @app.route('/health', methods=['GET'])
     def health_check():

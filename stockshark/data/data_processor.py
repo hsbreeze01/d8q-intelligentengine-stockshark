@@ -234,51 +234,105 @@ class DataProcessor:
         return processed
     
     def calculate_investment_score(self, stock_data: dict) -> Dict[str, Any]:
-        """
-        计算投资价值评分
-        :param stock_data: 整合后的股票数据
-        :return: 投资价值评分结果
-        """
+        """计算投资价值评分 — 4 因子加权（估值30 + 成长30 + 技术20 + 行业20）"""
         score = 0
         factors = []
-        
-        # 估值因子（30分）
+
+        # ── 估值因子（30分）──
         valuation_score = 0
-        if 'pe_ttm' in stock_data:
-            pe = stock_data['pe_ttm']
-            if pe > 0 and pe < 10:
+        pe = stock_data.get('pe_ttm') or stock_data.get('pe_lyr')
+        pb = stock_data.get('pb')
+        if pe and pe > 0:
+            if pe < 10:
                 valuation_score = 30
-                factors.append('低市盈率（PE<10）')
-            elif pe >= 10 and pe < 20:
-                valuation_score = 20
-                factors.append('合理市盈率（10≤PE<20）')
-            elif pe >= 20 and pe < 30:
+                factors.append(f'低市盈率（PE={pe:.1f}）')
+            elif pe < 15:
+                valuation_score = 25
+                factors.append(f'合理偏低市盈率（PE={pe:.1f}）')
+            elif pe < 25:
+                valuation_score = 18
+                factors.append(f'合理市盈率（PE={pe:.1f}）')
+            elif pe < 40:
                 valuation_score = 10
-                factors.append('较高市盈率（20≤PE<30）')
-        
-        # 成长因子（30分）
-        growth_score = 0
-        # 这里可以根据财务数据计算成长率，暂时给默认值
-        growth_score = 15
-        factors.append('成长潜力评估')
-        
-        # 技术因子（20分）
-        technical_score = 0
-        # 这里可以根据技术指标计算，暂时给默认值
-        technical_score = 10
-        factors.append('技术形态评估')
-        
-        # 行业因子（20分）
-        industry_score = 0
-        if 'industry' in stock_data:
-            # 这里可以根据行业前景评分，暂时给默认值
+                factors.append(f'偏高市盈率（PE={pe:.1f}）')
+            else:
+                valuation_score = 3
+                factors.append(f'高市盈率（PE={pe:.1f}）')
+        else:
+            valuation_score = 5
+            factors.append('估值数据缺失')
+        if pb and pb > 0 and pb < 1:
+            valuation_score = min(valuation_score + 5, 30)
+            factors.append(f'破净（PB={pb:.2f}）')
+
+        # ── 成长因子（30分）── 基于财务数据
+        growth_score = 10  # 基础分
+        roe = stock_data.get('roe')
+        rev_growth = stock_data.get('revenue_growth')
+        eps = stock_data.get('eps')
+        if roe and roe > 0:
+            if roe > 20:
+                growth_score += 15
+                factors.append(f'高ROE（{roe:.1f}%）')
+            elif roe > 12:
+                growth_score += 10
+                factors.append(f'良好ROE（{roe:.1f}%）')
+            elif roe > 6:
+                growth_score += 5
+                factors.append(f'一般ROE（{roe:.1f}%）')
+        if rev_growth:
+            if rev_growth > 20:
+                growth_score += 5
+                factors.append(f'高营收增长（{rev_growth:.1f}%）')
+            elif rev_growth > 5:
+                growth_score += 3
+                factors.append(f'正营收增长（{rev_growth:.1f}%）')
+            elif rev_growth < -10:
+                growth_score -= 3
+                factors.append(f'营收下滑（{rev_growth:.1f}%）')
+        growth_score = max(0, min(30, growth_score))
+
+        # ── 技术因子（20分）── 基于 DB 指标
+        technical_score = 10  # 基础分
+        rsi = stock_data.get('rsi_6')
+        kdj_k = stock_data.get('kdj_k')
+        macd_dif = stock_data.get('macd_dif')
+        ma5 = stock_data.get('ma5')
+        ma20 = stock_data.get('ma20')
+        close = stock_data.get('close') or stock_data.get('price')
+        if rsi is not None:
+            if rsi < 30:
+                technical_score += 5
+                factors.append(f'RSI超卖区（{rsi:.1f}）')
+            elif rsi < 45:
+                technical_score += 3
+                factors.append(f'RSI低位（{rsi:.1f}）')
+            elif rsi > 70:
+                technical_score -= 3
+                factors.append(f'RSI超买区（{rsi:.1f}）')
+        if kdj_k is not None and kdj_k < 20:
+            technical_score += 3
+            factors.append(f'KDJ低位（K={kdj_k:.1f}）')
+        if macd_dif is not None and macd_dif > 0:
+            technical_score += 2
+            factors.append('MACD金叉区间')
+        if close and ma5 and ma20:
+            if close > ma5 > ma20:
+                technical_score += 3
+                factors.append('均线多头排列')
+            elif close < ma5 < ma20:
+                technical_score -= 3
+                factors.append('均线空头排列')
+        technical_score = max(0, min(20, technical_score))
+
+        # ── 行业因子（20分）──
+        industry_score = 10  # 基础分
+        if stock_data.get('industry'):
             industry_score = 10
-            factors.append('行业前景评估')
-        
-        # 总分
+            factors.append(f'{stock_data["industry"]}行业评估')
+
         total_score = valuation_score + growth_score + technical_score + industry_score
-        
-        # 评级
+
         if total_score >= 80:
             rating = '优秀'
         elif total_score >= 60:
@@ -287,7 +341,7 @@ class DataProcessor:
             rating = '一般'
         else:
             rating = '较差'
-        
+
         return {
             'total_score': total_score,
             'rating': rating,
@@ -299,41 +353,62 @@ class DataProcessor:
         }
     
     def calculate_risk_score(self, stock_data: dict) -> Dict[str, Any]:
-        """
-        计算风险评分
-        :param stock_data: 整合后的股票数据
-        :return: 风险评分结果
-        """
-        risk_level = 'medium'
+        """计算风险评分 — 多维度风险判定"""
+        risk_level = 'low'
         risk_factors = []
-        
+
         # 估值风险
-        if 'pe_ttm' in stock_data:
-            pe = stock_data['pe_ttm']
-            if pe > 50:
-                risk_factors.append(f'高估值风险（PE={pe}）')
-        
+        pe = stock_data.get('pe_ttm') or stock_data.get('pe_lyr')
+        if pe and pe > 50:
+            risk_factors.append(f'高估值风险（PE={pe:.1f}）')
+        elif pe and pe > 0 and pe < 5:
+            risk_factors.append(f'极低估值警惕（PE={pe:.1f}，可能盈利异常）')
+
+        pb = stock_data.get('pb')
+        if pb and pb > 10:
+            risk_factors.append(f'高市净率风险（PB={pb:.1f}）')
+
         # 波动率风险
-        if 'change_pct' in stock_data:
-            if abs(stock_data['change_pct']) > 7:
-                risk_factors.append(f'高波动率风险（涨跌幅={stock_data["change_pct"]}%）')
-        
+        change_pct = stock_data.get('change_pct')
+        amplitude = stock_data.get('amplitude')
+        if change_pct and abs(change_pct) > 7:
+            risk_factors.append(f'高波动率（涨跌幅={change_pct:.2f}%）')
+        if amplitude and amplitude > 8:
+            risk_factors.append(f'高振幅（{amplitude:.2f}%）')
+
+        # 技术面风险
+        rsi = stock_data.get('rsi_6')
+        if rsi is not None and rsi > 80:
+            risk_factors.append(f'RSI严重超买（{rsi:.1f}）')
+        elif rsi is not None and rsi < 15:
+            risk_factors.append(f'RSI严重超卖（{rsi:.1f}）')
+
+        kdj_j = stock_data.get('kdj_j')
+        if kdj_j is not None and kdj_j > 100:
+            risk_factors.append(f'KDJ超买（J={kdj_j:.1f}）')
+
+        # 财务风险
+        roe = stock_data.get('roe')
+        if roe is not None and roe < 0:
+            risk_factors.append(f'ROE为负（{roe:.1f}%）')
+
         # 行业风险
-        if 'industry' in stock_data:
+        if stock_data.get('industry'):
             risk_factors.append(f'{stock_data["industry"]}行业风险')
-        
+
         # 确定风险等级
-        if len(risk_factors) >= 3:
+        risk_count = len(risk_factors)
+        if risk_count >= 4:
             risk_level = 'high'
-        elif len(risk_factors) == 0:
-            risk_level = 'low'
-        else:
+        elif risk_count >= 2:
             risk_level = 'medium'
-        
+        else:
+            risk_level = 'low'
+
         return {
             'risk_level': risk_level,
             'risk_factors': risk_factors,
-            'risk_count': len(risk_factors)
+            'risk_count': risk_count
         }
 
 # 创建全局实例

@@ -111,12 +111,12 @@ def get_stock_data():
             "kdj_k": _to_float(ind.get("kdj_k")),
             "kdj_d": _to_float(ind.get("kdj_d")),
             "kdj_j": _to_float(ind.get("kdj_j")),
-            "rsi6": _to_float(ind.get("rsi6")),
-            "rsi12": _to_float(ind.get("rsi12")),
-            "rsi24": _to_float(ind.get("rsi24")),
-            "boll_upper": _to_float(ind.get("boll_upper")),
-            "boll_middle": _to_float(ind.get("boll_middle")),
-            "boll_lower": _to_float(ind.get("boll_lower")),
+            "rsi6": _to_float(ind.get("rsi_6")),
+            "rsi12": _to_float(ind.get("rsi_12")),
+            "rsi24": _to_float(ind.get("rsi_24")),
+            "boll_upper": _to_float(ind.get("boll_up")),
+            "boll_middle": _to_float(ind.get("boll_mid")),
+            "boll_lower": _to_float(ind.get("boll_low")),
         })
         data.append(item)
 
@@ -186,12 +186,12 @@ def _indicator_row_to_dict(row):
         "kdj_k": _to_float(row.get("kdj_k")),
         "kdj_d": _to_float(row.get("kdj_d")),
         "kdj_j": _to_float(row.get("kdj_j")),
-        "rsi6": _to_float(row.get("rsi6")),
-        "rsi12": _to_float(row.get("rsi12")),
-        "rsi24": _to_float(row.get("rsi24")),
-        "boll_upper": _to_float(row.get("boll_upper")),
-        "boll_middle": _to_float(row.get("boll_middle")),
-        "boll_lower": _to_float(row.get("boll_lower")),
+        "rsi6": _to_float(row.get("rsi_6")),
+        "rsi12": _to_float(row.get("rsi_12")),
+        "rsi24": _to_float(row.get("rsi_24")),
+        "boll_upper": _to_float(row.get("boll_up")),
+        "boll_middle": _to_float(row.get("boll_mid")),
+        "boll_lower": _to_float(row.get("boll_low")),
     }
 
 

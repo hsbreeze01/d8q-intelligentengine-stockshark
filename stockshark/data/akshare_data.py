@@ -78,34 +78,72 @@ class AkShareData:
             return None
 
     def get_stock_quote(self, symbol: str) -> dict:
-        # Uses Sina source (stock_zh_a_spot) instead of blocked EM
-        def _fetch_all():
-            return ak.stock_zh_a_spot()
-
+        """获取股票行情 — DB 优先，AkShare 降级"""
+        # 1. 从 DB 获取最新行情
         try:
-            df = fetcher.fetch('stock_zh_a_spot_sina', _fetch_all, ttl=1800)
-            stock = df[df['代码'] == symbol]
-
-            if stock.empty:
-                return None
-
-            return {
-                'code': symbol,
-                'name': _safe_str(stock['名称'].values[0]),
-                'price': _safe_float(stock['最新价'].values[0]),
-                'change': _safe_float(stock['涨跌额'].values[0]),
-                'change_pct': _safe_float(stock['涨跌幅'].values[0]),
-                'volume': _safe_float(stock['成交量'].values[0]),
-                'amount': _safe_float(stock['成交额'].values[0]),
-                'open': _safe_float(stock['今开'].values[0]),
-                'high': _safe_float(stock['最高'].values[0]),
-                'low': _safe_float(stock['最低'].values[0]),
-                'previous_close': _safe_float(stock['昨收'].values[0]),
-                'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
-            }
+            from stockshark.utils.database import get_mysql_connection
+            conn = get_mysql_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT * FROM stock_data_daily WHERE stock_code = %s ORDER BY date DESC LIMIT 1",
+                    (symbol,)
+                )
+                row = cursor.fetchone()
+                if row and row.get('close'):
+                    # 获取名称
+                    name = ''
+                    try:
+                        cursor.execute("SELECT name FROM stock_basic WHERE code = %s", (symbol,))
+                        nr = cursor.fetchone()
+                        if nr:
+                            name = _safe_str(nr.get('name', ''))
+                    except Exception:
+                        pass
+                    return {
+                        'code': symbol,
+                        'name': name,
+                        'price': _safe_float(row.get('close')),
+                        'change': _safe_float(row.get('change_amount')),
+                        'change_pct': _safe_float(row.get('change_percentage')),
+                        'volume': _safe_float(row.get('volume')),
+                        'amount': _safe_float(row.get('turnover')),
+                        'open': _safe_float(row.get('open')),
+                        'high': _safe_float(row.get('high')),
+                        'low': _safe_float(row.get('low')),
+                        'previous_close': _safe_float(row.get('close', 0)) - _safe_float(row.get('change_amount', 0)),
+                        'turnover_rate': _safe_float(row.get('turnover_rate')),
+                        'amplitude': _safe_float(row.get('amplitude')),
+                        'update_time': str(row.get('date', ''))
+                    }
+            finally:
+                conn.close()
         except Exception as e:
-            logger.error("get_stock_quote failed for %s: %s", symbol, e)
-            return None
+            logger.warning("DB quote failed for %s: %s, trying AkShare", symbol, e)
+
+        # 2. AkShare 降级 (Sina)
+        try:
+            df = fetcher.fetch('stock_zh_a_spot_sina', lambda: ak.stock_zh_a_spot(), ttl=1800)
+            stock = df[df['代码'] == symbol]
+            if not stock.empty:
+                return {
+                    'code': symbol,
+                    'name': _safe_str(stock['名称'].values[0]),
+                    'price': _safe_float(stock['最新价'].values[0]),
+                    'change': _safe_float(stock['涨跌额'].values[0]),
+                    'change_pct': _safe_float(stock['涨跌幅'].values[0]),
+                    'volume': _safe_float(stock['成交量'].values[0]),
+                    'amount': _safe_float(stock['成交额'].values[0]),
+                    'open': _safe_float(stock['今开'].values[0]),
+                    'high': _safe_float(stock['最高'].values[0]),
+                    'low': _safe_float(stock['最低'].values[0]),
+                    'previous_close': _safe_float(stock['昨收'].values[0]),
+                    'update_time': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                }
+        except Exception as e:
+            logger.warning("AkShare quote also failed for %s: %s", symbol, e)
+
+        return None
 
     def get_stock_history_data(self, symbol: str, start_date: str, end_date: str) -> pd.DataFrame:
         try:
@@ -133,23 +171,63 @@ class AkShareData:
             return pd.DataFrame()
 
     def get_stock_valuation_data(self, symbol: str) -> dict:
-        try:
-            df = ak.stock_zh_valuation_baidu(symbol=symbol)
-            if df.empty:
-                return None
+        """获取估值数据 — 获取价格后用 AkShare 财务指标算 PE/PB"""
+        result = {'code': symbol, 'pe_ttm': 0.0, 'pe_lyr': 0.0, 'pb': 0.0, 'ps_ttm': 0.0, 'pcf_ttm': 0.0}
+        price = 0.0
 
-            result = {
-                'code': symbol,
-                'pe_ttm': _safe_float(df.get('市盈率(TTM)', pd.Series([0])).values[0]),
-                'pe_lyr': _safe_float(df.get('市盈率(LYR)', pd.Series([0])).values[0]),
-                'pb': _safe_float(df.get('市净率', pd.Series([0])).values[0]),
-                'ps_ttm': _safe_float(df.get('市销率(TTM)', pd.Series([0])).values[0]),
-                'pcf_ttm': _safe_float(df.get('市现率(TTM)', pd.Series([0])).values[0])
-            }
-            return result
+        # 1. 从 DB 获取最新收盘价
+        try:
+            from stockshark.utils.database import get_mysql_connection
+            conn = get_mysql_connection()
+            try:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "SELECT close FROM stock_data_daily WHERE stock_code=%s ORDER BY date DESC LIMIT 1",
+                    (symbol,)
+                )
+                price_row = cursor.fetchone()
+                if price_row and price_row.get('close'):
+                    price = float(price_row['close'])
+            finally:
+                conn.close()
         except Exception as e:
-            logger.error("get_stock_valuation_data failed: %s", e)
-            return None
+            logger.warning("DB price fetch failed for %s: %s", symbol, e)
+
+        # 2. 用 AkShare 财务指标算 PE/PB
+        if price > 0:
+            result = self._valuation_from_akshare_financial(symbol, price, result)
+
+        return result
+
+    def _valuation_from_akshare_financial(self, symbol: str, price: float, result: dict) -> dict:
+        """从 AkShare 财务指标接口计算 PE/PB"""
+        try:
+            df = ak.stock_financial_analysis_indicator(symbol=symbol)
+            if df is None or df.empty:
+                return result
+
+            # 跳过第一行 (1900-01-01 哨兵)
+            # 从最新报告期开始遍历
+            for i in range(len(df) - 1, max(len(df) - 15, -1), -1):
+                if i < 0:
+                    break
+                row = df.iloc[i]
+                dt = str(row.get('日期', ''))
+                if dt.startswith('1900'):
+                    continue
+                eps = _safe_float(row.get('摊薄每股收益(元)'), 0)
+                bvps = _safe_float(row.get('每股净资产_调整前(元)'), 0)
+                if eps > 0:
+                    result['pe_lyr'] = round(price / eps, 2)
+                    result['pe_ttm'] = result['pe_lyr']  # 简化
+                if bvps > 0:
+                    result['pb'] = round(price / bvps, 2)
+                if result['pe_lyr'] > 0 or result['pb'] > 0:
+                    result['financial_date'] = dt
+                    break
+        except Exception as e:
+            logger.warning("_valuation_from_akshare_financial failed for %s: %s", symbol, e)
+        return result
 
     def get_industry_stocks(self, industry_name: str) -> list:
         # THS: returns industry summary (not constituent stock list)
