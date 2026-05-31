@@ -44,7 +44,7 @@ def _set_cache(key: str, data: dict):
 def _fetch_djyanbao(keyword: str, cutoff: str) -> List[Dict]:
     """洞见研报"""
     try:
-        dj = djyanbao_search(keyword, limit=30)
+        dj = djyanbao_search(keyword, limit=20)
         return [
             {
                 "title": r["title"], "org": r.get("org", ""),
