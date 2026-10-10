@@ -35,7 +35,7 @@ class TestKlineEndpoint:
     def test_kline_returns_data(self, mock_tables, client):
         mock_tables.query_kline_range.return_value = [
             {
-                "trade_date": date(2025, 1, 13),
+                "date": date(2025, 1, 13),
                 "open": 10.0,
                 "high": 10.5,
                 "low": 9.8,
@@ -48,7 +48,7 @@ class TestKlineEndpoint:
         data = json.loads(resp.data)
         assert data["success"] is True
         assert len(data["data"]) == 1
-        assert data["data"][0]["trade_date"] == "2025-01-13"
+        assert data["data"][0]["date"] == "2025-01-13"
 
     @patch("stockshark.api.routes.pipeline.tables")
     def test_kline_no_data_returns_empty(self, mock_tables, client):
@@ -75,7 +75,7 @@ class TestIndicatorsEndpoint:
     def test_indicators_returns_data(self, mock_tables, client):
         mock_tables.query_indicators_range.return_value = [
             {
-                "trade_date": date(2025, 1, 13),
+                "date": date(2025, 1, 13),
                 "ma5": 10.1,
                 "ma10": None,
                 "ma20": None,
@@ -119,7 +119,7 @@ class TestStockDataEndpoint:
     def test_stock_data_merges_kline_and_indicators(self, mock_tables, client):
         mock_tables.query_kline_range.return_value = [
             {
-                "trade_date": date(2025, 1, 13),
+                "date": date(2025, 1, 13),
                 "open": 10.0,
                 "high": 10.5,
                 "low": 9.8,
@@ -129,7 +129,7 @@ class TestStockDataEndpoint:
         ]
         mock_tables.query_indicators_range.return_value = [
             {
-                "trade_date": date(2025, 1, 13),
+                "date": date(2025, 1, 13),
                 "ma5": 10.1,
                 "ma10": None,
                 "ma20": None,

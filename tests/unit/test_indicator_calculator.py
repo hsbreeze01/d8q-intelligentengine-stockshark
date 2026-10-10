@@ -21,7 +21,7 @@ def _make_kline_df(n=60):
         d = date(2025, 1, 1) + timedelta(days=i)
         rows.append({
             "stock_code": "600000",
-            "trade_date": d,
+            "date": d,
             "open": base_price + i * 0.1,
             "high": base_price + i * 0.1 + 0.5,
             "low": base_price + i * 0.1 - 0.3,
@@ -127,7 +127,7 @@ class TestIncrementalCalculation:
         rows = mock_tables.upsert_indicator_rows.call_args[0][0]
         # 所有写入的行日期应大于 existing_latest
         for r in rows:
-            assert r["trade_date"] > existing_latest
+            assert r["date"] > existing_latest
 
 
 # ---------------------------------------------------------------------------
@@ -144,7 +144,7 @@ class TestComputeMethods:
         assert len(result) == 50
         assert "macd_dif" in result.columns
         assert "macd_dea" in result.columns
-        assert "macd_bar" in result.columns
+        assert "macd_macd" in result.columns
 
     def test_kdj_shape(self):
         """KDJ 返回正确形状"""
@@ -168,6 +168,6 @@ class TestComputeMethods:
         close = pd.Series(np.random.randn(30).cumsum() + 100)
         result = IndicatorCalculator._calc_boll(close)
         assert len(result) == 30
-        assert "boll_upper" in result.columns
-        assert "boll_middle" in result.columns
-        assert "boll_lower" in result.columns
+        assert "boll_up" in result.columns
+        assert "boll_mid" in result.columns
+        assert "boll_low" in result.columns
