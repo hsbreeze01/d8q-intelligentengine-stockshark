@@ -99,33 +99,33 @@ class TestFallback:
 
     @patch(
         "stockshark.pipeline.kline_collector.AkshareEastmoneyFetcher.fetch",
-        side_effect=Exception("eastmoney error"),
+        return_value=_sample_df(),
     )
     @patch(
         "stockshark.pipeline.kline_collector.AkshareSinaFetcher.fetch",
-        return_value=_sample_df(),
+        side_effect=Exception("sina error"),
     )
-    def test_fallback_to_sina(self, mock_sina, mock_em):
-        """东财失败 → 降级到 Sina"""
+    def test_fallback_to_em(self, mock_sina, mock_em):
+        """Sina 失败 → 降级到东财"""
         collector = KLineCollector()
         result = collector._fetch_with_fallback("600000", "20250101", "20250114")
         assert result is not None
         assert len(result) == 2
-        mock_sina.assert_called_once()
+        mock_em.assert_called_once()
 
     @patch(
         "stockshark.pipeline.kline_collector.AkshareEastmoneyFetcher.fetch",
-        return_value=_sample_df(),
     )
     @patch(
         "stockshark.pipeline.kline_collector.AkshareSinaFetcher.fetch",
+        return_value=_sample_df(),
     )
-    def test_no_fallback_when_em_succeeds(self, mock_sina, mock_em):
-        """东财成功 → 不调用 Sina"""
+    def test_no_fallback_when_sina_succeeds(self, mock_sina, mock_em):
+        """Sina 成功 → 不调用东财"""
         collector = KLineCollector()
         result = collector._fetch_with_fallback("600000", "20250101", "20250114")
         assert result is not None
-        mock_sina.assert_not_called()
+        mock_em.assert_not_called()
 
     @patch(
         "stockshark.pipeline.kline_collector.AkshareEastmoneyFetcher.fetch",
